@@ -282,9 +282,10 @@ class DocxMetadataTool(KaosTool):
                 )
                 meta = DocxMetadata.from_xml(core_xml, app_xml)
 
-            import json
-
-            return ToolResult.create_success(json.dumps(meta.to_dict(), indent=2))
+            meta_dict = meta.to_dict()
+            title = meta_dict.get("title", Path(path).name)
+            summary = f"Metadata for {title}"
+            return ToolResult.create_success(output=meta_dict, summary=summary)
         except Exception as exc:
             return ToolResult.create_error(
                 f"Failed to extract metadata: {exc}. "
@@ -366,22 +367,23 @@ class SearchDocxTool(KaosTool):
             doc = parse_docx(path)
             results = search_document(doc, query, top_k=top_k, level=level)
 
-            return ToolResult.create_success(
-                output={
-                    "query": results.query,
-                    "total_matches": results.total_matches,
-                    "has_more": results.has_more,
-                    "results": [
-                        {
-                            "text": r.text,
-                            "score": round(r.score, 4),
-                            "block_ref": r.block_ref,
-                            "section_title": r.section_title,
-                        }
-                        for r in results.results
-                    ],
-                }
-            )
+            result_data = {
+                "query": results.query,
+                "total_matches": results.total_matches,
+                "has_more": results.has_more,
+                "results": [
+                    {
+                        "text": r.text,
+                        "score": round(r.score, 4),
+                        "block_ref": r.block_ref,
+                        "section_title": r.section_title,
+                    }
+                    for r in results.results
+                ],
+            }
+            more = " (has more)" if results.has_more else ""
+            summary = f"Found {results.total_matches} matches for '{results.query}'{more}"
+            return ToolResult.create_success(output=result_data, summary=summary)
         except Exception as exc:
             return ToolResult.create_error(
                 f"Search failed: {exc}. "
@@ -523,9 +525,8 @@ class ListSlidesTool(KaosTool):
                 "The file may be corrupted. Try opening it in PowerPoint or LibreOffice."
             )
 
-        import json
-
-        return ToolResult.create_success(json.dumps(slides, indent=2))
+        summary = f"Found {len(slides)} slides"
+        return ToolResult.create_success(output={"slides": slides}, summary=summary)
 
 
 class GetSlideTool(KaosTool):

@@ -73,9 +73,10 @@ class TestPptxToolExecution:
         tool = ListSlidesTool()
         result = await tool.execute({"path": str(pptx_file)})
         assert result.isError is not True
-        import json
-
-        slides = json.loads(result.content[0].text)
+        # Summary in content, structured data in structuredContent
+        assert "1 slide" in result.content[0].text
+        assert result.structuredContent is not None
+        slides = result.structuredContent["slides"]
         assert len(slides) == 1
         assert slides[0]["slide_number"] == 1
 
