@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from lxml import etree
+from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import W_BASED_ON, W_NAME, W_OUTLINE_LVL, W_PPR, W_VAL, W, qn
 

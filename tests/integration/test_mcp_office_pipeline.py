@@ -173,10 +173,10 @@ async def test_metadata_via_mcp(tmp_path: Path) -> None:
             {"path": str(docx_path)},
         )
         assert not result.isError
-        text = result.content[0].text
-        meta = json.loads(text)
-        assert meta["title"] == "MCP Test Document"
-        assert meta["creator"] == "Test Author"
+        # DocxMetadataTool now returns structured data + summary text
+        assert result.structuredContent is not None
+        assert result.structuredContent["title"] == "MCP Test Document"
+        assert result.structuredContent["creator"] == "Test Author"
 
 
 @pytest.mark.integration

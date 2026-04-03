@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from kaos_office.ooxml.namespace import SML_R, SML_SI, SML_T
 
 if TYPE_CHECKING:
-    from lxml.etree import _Element
+    from lxml.etree import _Element  # ty: ignore[unresolved-import]
 
 
 class SharedStringTable:

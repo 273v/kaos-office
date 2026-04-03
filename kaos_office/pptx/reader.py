@@ -22,7 +22,7 @@ from kaos_content.model.blocks import Table
 from kaos_content.model.document import ContentDocument
 from kaos_content.model.inlines import Emphasis, Inline, Link, Strong, Text
 from kaos_content.model.table import Cell, Row, TableSection
-from lxml import etree
+from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import (
     A_GRAPHIC,
@@ -267,12 +267,12 @@ def _process_shape(shape: BaseShape, slide: Slide, ctx: ParseContext) -> None:
 
     # Table
     if shape.has_table:
-        _process_table(shape.table, ctx)
+        _process_table(shape.table, ctx)  # ty: ignore[unresolved-attribute]
         return
 
     # Chart
     if shape.has_chart:
-        _process_chart(shape.chart, ctx)
+        _process_chart(shape.chart, ctx)  # ty: ignore[unresolved-attribute]
         return
 
     # Check for SmartArt (graphicFrame with diagram URI)
@@ -288,22 +288,22 @@ def _process_shape(shape: BaseShape, slide: Slide, ctx: ParseContext) -> None:
     # Text shapes (including title/subtitle/body placeholders)
     if shape.has_text_frame:
         if ph_type in _TITLE_PLACEHOLDER_TYPES:
-            text = shape.text_frame.text.strip()
+            text = shape.text_frame.text.strip()  # ty: ignore[unresolved-attribute]
             if text:
                 ctx.builder.heading(1, text)
         elif ph_type in _SUBTITLE_PLACEHOLDER_TYPES:
-            text = shape.text_frame.text.strip()
+            text = shape.text_frame.text.strip()  # ty: ignore[unresolved-attribute]
             if text:
                 ctx.builder.heading(2, text)
         else:
             # Body/object placeholders inherit bullets from the layout
             is_body = ph_type in _BODY_PLACEHOLDER_TYPES
-            _process_text_frame(shape.text_frame, ctx, is_body_placeholder=is_body)
+            _process_text_frame(shape.text_frame, ctx, is_body_placeholder=is_body)  # ty: ignore[unresolved-attribute]
 
 
 def _process_group(group_shape: BaseShape, ctx: ParseContext) -> None:
     """Process group shape by recursing into sorted children."""
-    children = _sort_shapes(list(group_shape.shapes))
+    children = _sort_shapes(list(group_shape.shapes))  # ty: ignore[unresolved-attribute]
     for child in children:
         # Groups don't have slide context for SmartArt, pass None
         _process_shape_simple(child, ctx)
@@ -322,11 +322,11 @@ def _process_shape_simple(shape: BaseShape, ctx: ParseContext) -> None:
         return
 
     if shape.has_table:
-        _process_table(shape.table, ctx)
+        _process_table(shape.table, ctx)  # ty: ignore[unresolved-attribute]
         return
 
     if shape.has_chart:
-        _process_chart(shape.chart, ctx)
+        _process_chart(shape.chart, ctx)  # ty: ignore[unresolved-attribute]
         return
 
     st = shape.shape_type
@@ -335,7 +335,7 @@ def _process_shape_simple(shape: BaseShape, ctx: ParseContext) -> None:
         return
 
     if shape.has_text_frame:
-        _process_text_frame(shape.text_frame, ctx)
+        _process_text_frame(shape.text_frame, ctx)  # ty: ignore[unresolved-attribute]
 
 
 def _process_text_frame(
@@ -349,7 +349,7 @@ def _process_text_frame(
         is_body_placeholder: If True, paragraphs without explicit bullet markers
             are treated as bullet list items (bullets inherited from layout).
     """
-    paragraphs = text_frame.paragraphs  # type: ignore[attr-defined]
+    paragraphs = text_frame.paragraphs  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     if not paragraphs:
         return
 
@@ -693,7 +693,7 @@ def _process_picture(shape: BaseShape, ctx: ParseContext) -> None:
     # Determine content type / extension
     ext = "png"
     with contextlib.suppress(Exception):
-        content_type = shape.image.content_type
+        content_type = shape.image.content_type  # ty: ignore[unresolved-attribute]
         if content_type:
             ext = content_type.split("/")[-1]
             if ext == "jpeg":
@@ -710,7 +710,7 @@ def _process_notes(slide: Slide, ctx: ParseContext) -> None:
 
     try:
         notes_tf = slide.notes_slide.notes_text_frame
-        text = notes_tf.text.strip()
+        text = notes_tf.text.strip()  # ty: ignore[unresolved-attribute]
         if text:
             ctx.builder.begin_div(classes="speaker-notes")
             ctx.builder.paragraph(Text(value=text))
@@ -750,11 +750,11 @@ def get_slide_text(path: str | Path, slide_number: int) -> str:
         if ph_type in _SKIP_PLACEHOLDER_TYPES:
             continue
         if shape.has_text_frame:
-            text = shape.text_frame.text.strip()
+            text = shape.text_frame.text.strip()  # ty: ignore[unresolved-attribute]
             if text:
                 parts.append(text)
         elif shape.has_table:
-            for row in shape.table.rows:
+            for row in shape.table.rows:  # ty: ignore[unresolved-attribute]
                 row_texts = []
                 for cell in row.cells:
                     ct = cell.text.strip()

@@ -8,7 +8,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import PurePosixPath
 
-from lxml import etree
+from lxml import etree  # ty: ignore[unresolved-import]
 
 # --- Size limits ---
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB compressed

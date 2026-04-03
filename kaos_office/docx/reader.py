@@ -33,7 +33,7 @@ from kaos_content.model.inlines import (
     Underline,
 )
 from kaos_content.model.table import Cell, Row, TableSection
-from lxml import etree
+from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.docx.metadata import DocxMetadata
 from kaos_office.docx.numbering import NumberingResolver
@@ -886,9 +886,9 @@ def _inlines_to_text(inlines: list[Inline]) -> str:
         if isinstance(inline, Text):
             parts.append(inline.value)
         elif hasattr(inline, "children"):
-            parts.append(_inlines_to_text(list(inline.children)))  # type: ignore[attr-defined]
+            parts.append(_inlines_to_text(list(inline.children)))  # type: ignore[attr-defined]  # ty: ignore[invalid-argument-type]
         elif hasattr(inline, "value"):
-            parts.append(inline.value)  # type: ignore[attr-defined]
+            parts.append(inline.value)  # type: ignore[attr-defined]  # ty: ignore[invalid-argument-type]
     return "".join(parts)
 
 

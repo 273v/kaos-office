@@ -251,7 +251,7 @@ def _attach_formulas(
     read formulas (calamine only returns cached values).
     """
     try:
-        import openpyxl
+        import openpyxl  # ty: ignore[unresolved-import]
     except ImportError:
         return  # openpyxl not installed — skip formula extraction
 

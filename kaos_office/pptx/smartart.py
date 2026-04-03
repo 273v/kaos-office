@@ -7,7 +7,7 @@ extract text from SmartArt diagram nodes.
 
 from __future__ import annotations
 
-from lxml import etree
+from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import A_T, DGM_PT, DGM_PT_LST, DGM_REL_IDS, R, qn
 from kaos_office.opc.package import OPCPackage

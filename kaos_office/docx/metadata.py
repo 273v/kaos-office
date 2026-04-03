@@ -122,7 +122,7 @@ class DocxMetadata:
 
 def _text(root: object, tag: str) -> str | None:
     """Find an element and return its text, or None."""
-    from lxml import etree
+    from lxml import etree  # ty: ignore[unresolved-import]
 
     assert isinstance(root, etree._Element)
     el = root.find(f".//{tag}")

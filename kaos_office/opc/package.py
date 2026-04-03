@@ -12,7 +12,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Self
 
-from lxml import etree
+from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.opc.content_types import ContentTypeMap
 from kaos_office.opc.relationships import RelationshipManager

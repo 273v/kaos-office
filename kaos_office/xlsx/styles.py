@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from kaos_office.ooxml.namespace import SML_CELL_XFS, SML_NUM_FMT, SML_NUM_FMTS, SML_XF
 
 if TYPE_CHECKING:
-    from lxml.etree import _Element
+    from lxml.etree import _Element  # ty: ignore[unresolved-import]
 
 # Built-in date/time numFmtIds
 _DATE_FMT_IDS = frozenset({14, 15, 16, 17, 22})

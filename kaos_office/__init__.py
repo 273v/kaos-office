@@ -79,7 +79,7 @@ def extract_to_markdown(path: str | Path, **kwargs: object) -> str:
 
         from kaos_office.xlsx.reader import parse_xlsx
 
-        doc = parse_xlsx(p, **kwargs)  # type: ignore[arg-type]
+        doc = parse_xlsx(p, **kwargs)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
         return serialize_tabular_markdown(doc)
 
     supported = ".docx, .pptx, .xlsx"

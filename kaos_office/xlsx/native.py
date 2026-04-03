@@ -22,7 +22,7 @@ from kaos_content.model.tabular import (
     TabularDocument,
     infer_column_type,
 )
-from lxml import etree
+from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import (
     SML_CELL,
