@@ -1,9 +1,21 @@
 """kaos-office: Office document extraction for KAOS.
 
-Extracts DOCX and PPTX files into kaos-content ContentDocument AST with provenance.
-Uses lxml for XML parsing. PPTX uses python-pptx for shape traversal with OPC fallback
-for SmartArt.
+Extracts DOCX, PPTX, and XLSX files into kaos-content AST models:
+- DOCX, PPTX → ContentDocument (flow content: headings, paragraphs, lists, tables)
+- XLSX → TabularDocument (typed columns, row data, multi-sheet)
+
+All three formats produce markdown via a unified entry point::
+
+    from kaos_office import extract_to_markdown
+
+    md = extract_to_markdown("report.docx")
+    md = extract_to_markdown("slides.pptx")
+    md = extract_to_markdown("data.xlsx")
 """
+
+from __future__ import annotations
+
+from pathlib import Path
 
 from kaos_content.search import SearchResult, SearchResults, search_document
 
@@ -14,26 +26,84 @@ from kaos_office.tools import (
     DocxMetadataTool,
     GetDocxMarkdownTool,
     GetDocxTextTool,
+    GetSheetXlsxTool,
     GetSlideTool,
+    ListSheetsXlsxTool,
     ListSlidesTool,
     ParseDocxTool,
     ParsePptxTool,
+    ParseXlsxTool,
     SearchDocxTool,
+    XlsxMetadataTool,
     register_office_tools,
 )
+
+
+def extract_to_markdown(path: str | Path, **kwargs: object) -> str:
+    """Extract any Office document to markdown.
+
+    Dispatches by file extension:
+    - ``.docx`` → ContentDocument → ``serialize_markdown()``
+    - ``.pptx`` → ContentDocument → ``serialize_markdown()``
+    - ``.xlsx`` → TabularDocument → ``serialize_tabular_markdown()``
+
+    Args:
+        path: Path to the Office document.
+        **kwargs: Passed to the format-specific parser (e.g., ``header_row``
+            for XLSX, ``sheets`` for specific sheet selection).
+
+    Returns:
+        Markdown string.
+
+    Raises:
+        ValueError: If the file extension is not supported.
+        FileNotFoundError: If the file does not exist.
+    """
+    p = Path(path).resolve()
+    ext = p.suffix.lower()
+
+    if ext == ".docx":
+        from kaos_content.serializers import serialize_markdown
+
+        doc = parse_docx(p)
+        return serialize_markdown(doc)
+
+    if ext == ".pptx":
+        from kaos_content.serializers import serialize_markdown
+
+        doc = parse_pptx(p)
+        return serialize_markdown(doc)
+
+    if ext in (".xlsx", ".xlsm", ".xls"):
+        from kaos_content.serializers.tabular import serialize_tabular_markdown
+
+        from kaos_office.xlsx.reader import parse_xlsx
+
+        doc = parse_xlsx(p, **kwargs)  # type: ignore[arg-type]
+        return serialize_tabular_markdown(doc)
+
+    supported = ".docx, .pptx, .xlsx"
+    msg = f"Unsupported file extension: {ext!r}. Supported: {supported}"
+    raise ValueError(msg)
+
 
 __all__ = [
     "DocxMetadataTool",
     "GetDocxMarkdownTool",
     "GetDocxTextTool",
+    "GetSheetXlsxTool",
     "GetSlideTool",
+    "ListSheetsXlsxTool",
     "ListSlidesTool",
     "ParseDocxTool",
     "ParsePptxTool",
+    "ParseXlsxTool",
     "SearchDocxTool",
     "SearchResult",
     "SearchResults",
+    "XlsxMetadataTool",
     "__version__",
+    "extract_to_markdown",
     "parse_docx",
     "parse_pptx",
     "register_office_tools",
