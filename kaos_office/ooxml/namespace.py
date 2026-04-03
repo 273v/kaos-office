@@ -1,7 +1,7 @@
 """OOXML namespace constants and Clark notation helpers.
 
 Pre-computed qualified names for O(1) element tag comparison with lxml.
-Covers WordprocessingML, DrawingML, and OPC namespaces.
+Covers WordprocessingML, PresentationML, DrawingML, and OPC namespaces.
 """
 
 # --- Namespace URIs (Transitional — what all real-world documents use) ---
@@ -17,6 +17,15 @@ A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 # DrawingML WordprocessingDrawing
 WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+
+# PresentationML
+P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+# DrawingML Chart
+C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+
+# DrawingML Diagram (SmartArt)
+DGM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
 
 # DrawingML Picture
 PIC = "http://schemas.openxmlformats.org/drawingml/2006/picture"
@@ -118,10 +127,109 @@ W_AUTHOR = qn(W, "author")
 W_DATE = qn(W, "date")
 W_ANCHOR = qn(W, "anchor")
 
-# DrawingML tags
+# --- Pre-computed PresentationML tags ---
+P_SLD = qn(P, "sld")
+P_CSLD = qn(P, "cSld")
+P_SP_TREE = qn(P, "spTree")
+P_SP = qn(P, "sp")
+P_PIC = qn(P, "pic")
+P_GRAPHIC_FRAME = qn(P, "graphicFrame")
+P_GRP_SP = qn(P, "grpSp")
+P_CXN_SP = qn(P, "cxnSp")
+P_NV_SP_PR = qn(P, "nvSpPr")
+P_NV_PIC_PR = qn(P, "nvPicPr")
+P_NV_GRP_SP_PR = qn(P, "nvGrpSpPr")
+P_NV_GRAPHIC_FRAME_PR = qn(P, "nvGraphicFramePr")
+P_CNV_PR = qn(P, "cNvPr")
+P_NV_PR = qn(P, "nvPr")
+P_PH = qn(P, "ph")
+P_TX_BODY = qn(P, "txBody")
+P_SP_PR = qn(P, "spPr")
+P_GRP_SP_PR = qn(P, "grpSpPr")
+P_BLIP_FILL = qn(P, "blipFill")
+P_XFRM = qn(P, "xfrm")
+P_NOTES = qn(P, "notes")
+
+# --- Pre-computed DrawingML tags (extended for PPTX) ---
 A_BLIP = qn(A, "blip")
 A_GRAPHIC = qn(A, "graphic")
 A_GRAPHIC_DATA = qn(A, "graphicData")
+A_P = qn(A, "p")
+A_R = qn(A, "r")
+A_T = qn(A, "t")
+A_RPR = qn(A, "rPr")
+A_PPR = qn(A, "pPr")
+A_BR = qn(A, "br")
+A_BODY_PR = qn(A, "bodyPr")
+A_LST_STYLE = qn(A, "lstStyle")
+A_TX_BODY = qn(A, "txBody")
+A_TBL = qn(A, "tbl")
+A_TBL_GRID = qn(A, "tblGrid")
+A_GRID_COL = qn(A, "gridCol")
+A_TR = qn(A, "tr")
+A_TC = qn(A, "tc")
+A_XFRM = qn(A, "xfrm")
+A_OFF = qn(A, "off")
+A_EXT = qn(A, "ext")
+A_CH_OFF = qn(A, "chOff")
+A_CH_EXT = qn(A, "chExt")
+A_BU_CHAR = qn(A, "buChar")
+A_BU_AUTO_NUM = qn(A, "buAutoNum")
+A_BU_NONE = qn(A, "buNone")
+A_HLINKCLICK = qn(A, "hlinkClick")
+
+# --- Pre-computed Chart tags ---
+C_CHART_SPACE = qn(C, "chartSpace")
+C_CHART = qn(C, "chart")
+C_TITLE = qn(C, "title")
+C_TX = qn(C, "tx")
+C_RICH = qn(C, "rich")
+C_PLOT_AREA = qn(C, "plotArea")
+C_SER = qn(C, "ser")
+C_CAT = qn(C, "cat")
+C_VAL = qn(C, "val")
+C_STR_REF = qn(C, "strRef")
+C_NUM_REF = qn(C, "numRef")
+C_STR_CACHE = qn(C, "strCache")
+C_NUM_CACHE = qn(C, "numCache")
+C_PT = qn(C, "pt")
+C_V = qn(C, "v")
+
+# Chart type elements
+C_BAR_CHART = qn(C, "barChart")
+C_LINE_CHART = qn(C, "lineChart")
+C_PIE_CHART = qn(C, "pieChart")
+C_SCATTER_CHART = qn(C, "scatterChart")
+C_AREA_CHART = qn(C, "areaChart")
+C_RADAR_CHART = qn(C, "radarChart")
+C_DOUGHNUT_CHART = qn(C, "doughnutChart")
+C_BAR_3D_CHART = qn(C, "bar3DChart")
+C_LINE_3D_CHART = qn(C, "line3DChart")
+C_PIE_3D_CHART = qn(C, "pie3DChart")
+C_AREA_3D_CHART = qn(C, "area3DChart")
+
+CHART_TYPE_TAGS = frozenset(
+    {
+        C_BAR_CHART,
+        C_LINE_CHART,
+        C_PIE_CHART,
+        C_SCATTER_CHART,
+        C_AREA_CHART,
+        C_RADAR_CHART,
+        C_DOUGHNUT_CHART,
+        C_BAR_3D_CHART,
+        C_LINE_3D_CHART,
+        C_PIE_3D_CHART,
+        C_AREA_3D_CHART,
+    }
+)
+
+# --- Pre-computed Diagram (SmartArt) tags ---
+DGM_DATA_MODEL = qn(DGM, "dataModel")
+DGM_PT_LST = qn(DGM, "ptLst")
+DGM_PT = qn(DGM, "pt")
+DGM_T = qn(DGM, "t")
+DGM_REL_IDS = qn(DGM, "relIds")
 
 # WordprocessingDrawing tags
 WP_DOCPR = qn(WP, "docPr")
@@ -160,6 +268,19 @@ RT_CORE_PROPERTIES = (
 RT_EXTENDED_PROPERTIES = (
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"
 )
+
+# PresentationML relationship types
+RT_SLIDE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"
+RT_SLIDE_LAYOUT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout"
+RT_SLIDE_MASTER = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster"
+RT_NOTES_SLIDE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide"
+RT_CHART = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+RT_DIAGRAM_DATA = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData"
+
+# graphicData URI values (shape type identification)
+GD_TABLE = "http://schemas.openxmlformats.org/drawingml/2006/table"
+GD_CHART = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+GD_DIAGRAM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
 
 # --- MIME Types ---
 DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

@@ -1,6 +1,6 @@
 """MCP tool definitions for Office document extraction.
 
-KaosTool implementations for DOCX parsing, text extraction, search,
+KaosTool implementations for DOCX and PPTX parsing, text extraction, search,
 and metadata. Registered via register_office_tools(runtime).
 """
 
@@ -28,6 +28,14 @@ _OFFICE_ANNOTATIONS = ToolAnnotations(
 
 def _validate_docx_path(path_str: str) -> Path | None:
     """Validate a DOCX file path exists and return it, or None."""
+    p = Path(path_str)
+    if not p.exists():
+        return None
+    return p
+
+
+def _validate_pptx_path(path_str: str) -> Path | None:
+    """Validate a PPTX file path exists and return it, or None."""
     p = Path(path_str)
     if not p.exists():
         return None
@@ -85,12 +93,30 @@ class ParseDocxTool(KaosTool):
 
         # Store as artifact if context available
         if context and context.runtime:
-            from kaos_content.artifacts import document_to_summary, store_document
+            from kaos_content.artifacts import (
+                document_outline,
+                document_to_summary,
+                store_document,
+            )
+            from kaos_content.views import DocumentView
 
             manifest = await store_document(doc, context.runtime, context, name=path.stem)
-            summary = document_to_summary(doc)
-            return ToolResult.create_success(
-                f"{summary}\n\nFull document stored: {manifest.artifact_id}"
+            summary = document_to_summary(doc, max_length=500)
+            outline = document_outline(doc)
+            view = DocumentView(doc)
+
+            return manifest.to_tool_result(
+                summary=summary,
+                structured_content={
+                    "artifact_id": manifest.artifact_id,
+                    "title": doc.metadata.title,
+                    "block_count": len(doc.body),
+                    "has_sections": view.has_sections,
+                    "outline": outline[:10],
+                    "section_count": len(view.flat_sections),
+                    "body_uri": manifest.body_uri,
+                    "sections_uri": f"kaos://content/{manifest.artifact_id}/sections",
+                },
             )
 
         # No runtime — return inline summary
@@ -340,27 +366,226 @@ class SearchDocxTool(KaosTool):
             doc = parse_docx(path)
             results = search_document(doc, query, top_k=top_k, level=level)
 
-            import json
-
-            output = {
-                "query": results.query,
-                "total_matches": results.total_matches,
-                "has_more": results.has_more,
-                "results": [
-                    {
-                        "text": r.text,
-                        "score": round(r.score, 4),
-                        "block_ref": r.block_ref,
-                        "section_title": r.section_title,
-                    }
-                    for r in results.results
-                ],
-            }
-            return ToolResult.create_success(json.dumps(output, indent=2))
+            return ToolResult.create_success(
+                output={
+                    "query": results.query,
+                    "total_matches": results.total_matches,
+                    "has_more": results.has_more,
+                    "results": [
+                        {
+                            "text": r.text,
+                            "score": round(r.score, 4),
+                            "block_ref": r.block_ref,
+                            "section_title": r.section_title,
+                        }
+                        for r in results.results
+                    ],
+                }
+            )
         except Exception as exc:
             return ToolResult.create_error(
                 f"Search failed: {exc}. "
                 "Try kaos-office-get-text to verify the document has extractable content."
+            )
+
+
+class ParsePptxTool(KaosTool):
+    """Parse a PPTX file into a structured ContentDocument."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-parse-pptx",
+            display_name="Parse PPTX",
+            description=(
+                "Parse a PPTX file into a structured document. Each slide becomes "
+                "a section with headings, paragraphs, tables (including chart data), "
+                "images, SmartArt text, and speaker notes."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.EXTRACT,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(
+                    name="path",
+                    type="string",
+                    description="Path to the PPTX file.",
+                ),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path_str = inputs.get("path", "")
+        path = _validate_pptx_path(path_str)
+        if path is None:
+            return ToolResult.create_error(
+                f"File not found: {path_str}. "
+                "Verify the path is correct. Use an absolute path if relative doesn't work."
+            )
+
+        try:
+            from kaos_office.pptx.reader import parse_pptx
+
+            doc = parse_pptx(path)
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"Failed to parse PPTX: {exc}. "
+                "The file may be corrupted or password-protected. "
+                "Try kaos-office-list-slides for basic file validation."
+            )
+
+        # Store as artifact if context available
+        if context and context.runtime:
+            from kaos_content.artifacts import (
+                document_outline,
+                document_to_summary,
+                store_document,
+            )
+            from kaos_content.views import DocumentView
+
+            manifest = await store_document(doc, context.runtime, context, name=path.stem)
+            summary = document_to_summary(doc, max_length=500)
+            outline = document_outline(doc)
+            view = DocumentView(doc)
+
+            return manifest.to_tool_result(
+                summary=summary,
+                structured_content={
+                    "artifact_id": manifest.artifact_id,
+                    "title": doc.metadata.title,
+                    "slide_count": len(doc.body),
+                    "block_count": len(doc.body),
+                    "has_sections": view.has_sections,
+                    "outline": outline[:10],
+                    "section_count": len(view.flat_sections),
+                    "body_uri": manifest.body_uri,
+                    "sections_uri": f"kaos://content/{manifest.artifact_id}/sections",
+                },
+            )
+
+        # No runtime — return inline summary
+        from kaos_content.serializers.text import serialize_text
+
+        text = serialize_text(doc)
+        blocks = len(doc.body)
+        return ToolResult.create_success(
+            f"Parsed {blocks} slides from {path.name}.\n\n{text[:2000]}"
+        )
+
+
+class ListSlidesTool(KaosTool):
+    """List slides in a PPTX file with titles and metadata."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-list-slides",
+            display_name="List PPTX Slides",
+            description=(
+                "List all slides in a PPTX file with their titles, shape counts, "
+                "and whether they have speaker notes."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.EXTRACT,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(
+                    name="path",
+                    type="string",
+                    description="Path to the PPTX file.",
+                ),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path_str = inputs.get("path", "")
+        path = _validate_pptx_path(path_str)
+        if path is None:
+            return ToolResult.create_error(
+                f"File not found: {path_str}. Verify the path is correct and the file exists."
+            )
+
+        try:
+            from kaos_office.pptx.reader import list_slides
+
+            slides = list_slides(path)
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"Failed to list slides: {exc}. "
+                "The file may be corrupted. Try opening it in PowerPoint or LibreOffice."
+            )
+
+        import json
+
+        return ToolResult.create_success(json.dumps(slides, indent=2))
+
+
+class GetSlideTool(KaosTool):
+    """Extract text from a specific slide in a PPTX file."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-get-slide",
+            display_name="Get PPTX Slide",
+            description=(
+                "Extract text content from a specific slide in a PPTX file. "
+                "Uses 1-based slide numbering. Use kaos-office-list-slides first "
+                "to see available slides."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.EXTRACT,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(
+                    name="path",
+                    type="string",
+                    description="Path to the PPTX file.",
+                ),
+                ParameterSchema(
+                    name="slide_number",
+                    type="integer",
+                    description="Slide number (1-based).",
+                    constraints={"minimum": 1},
+                ),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path_str = inputs.get("path", "")
+        slide_number = inputs.get("slide_number", 1)
+
+        path = _validate_pptx_path(path_str)
+        if path is None:
+            return ToolResult.create_error(
+                f"File not found: {path_str}. Verify the path is correct and the file exists."
+            )
+
+        try:
+            from kaos_office.pptx.reader import get_slide_text
+
+            text = get_slide_text(path, slide_number)
+            return ToolResult.create_success(text)
+        except ValueError as exc:
+            return ToolResult.create_error(
+                f"{exc}. Use kaos-office-list-slides to see available slide numbers."
+            )
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"Failed to extract slide: {exc}. "
+                "Try kaos-office-parse-pptx for full document extraction."
             )
 
 
@@ -379,6 +604,9 @@ def register_office_tools(runtime: KaosRuntime) -> int:
         GetDocxMarkdownTool(),
         DocxMetadataTool(),
         SearchDocxTool(),
+        ParsePptxTool(),
+        ListSlidesTool(),
+        GetSlideTool(),
     ]
     for tool in tools:
         runtime.tools.register_tool(tool)

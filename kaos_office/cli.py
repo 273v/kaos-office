@@ -4,6 +4,9 @@ Usage:
     kaos-office extract FILE [--format markdown|text|json] [--output FILE] [--json]
     kaos-office search FILE QUERY [--top-k N] [--level paragraph|sentence] [--json]
     kaos-office metadata FILE [--json]
+    kaos-office pptx-extract FILE [--format markdown|text|json] [--output FILE] [--json]
+    kaos-office pptx-slides FILE [--json]
+    kaos-office pptx-slide FILE SLIDE_NUMBER [--json]
 """
 
 from __future__ import annotations
@@ -22,8 +25,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # --- extract ---
-    p_extract = subparsers.add_parser("extract", help="Extract document content")
+    # --- DOCX: extract ---
+    p_extract = subparsers.add_parser("extract", help="Extract DOCX content")
     p_extract.add_argument("file", help="Path to DOCX file")
     p_extract.add_argument(
         "--format",
@@ -34,8 +37,8 @@ def main(argv: list[str] | None = None) -> None:
     p_extract.add_argument("--output", "-o", help="Write to file instead of stdout")
     p_extract.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
 
-    # --- search ---
-    p_search = subparsers.add_parser("search", help="Search within a document")
+    # --- DOCX: search ---
+    p_search = subparsers.add_parser("search", help="Search within a DOCX document")
     p_search.add_argument("file", help="Path to DOCX file")
     p_search.add_argument("query", help="Search query")
     p_search.add_argument("--top-k", type=int, default=10, help="Max results (default: 10)")
@@ -47,10 +50,33 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_search.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
 
-    # --- metadata ---
-    p_meta = subparsers.add_parser("metadata", help="Show document metadata")
+    # --- DOCX: metadata ---
+    p_meta = subparsers.add_parser("metadata", help="Show DOCX metadata")
     p_meta.add_argument("file", help="Path to DOCX file")
     p_meta.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
+
+    # --- PPTX: extract ---
+    p_pptx = subparsers.add_parser("pptx-extract", help="Extract PPTX content")
+    p_pptx.add_argument("file", help="Path to PPTX file")
+    p_pptx.add_argument(
+        "--format",
+        choices=["markdown", "text", "json"],
+        default="markdown",
+        help="Output format (default: markdown)",
+    )
+    p_pptx.add_argument("--output", "-o", help="Write to file instead of stdout")
+    p_pptx.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
+
+    # --- PPTX: list slides ---
+    p_slides = subparsers.add_parser("pptx-slides", help="List PPTX slides")
+    p_slides.add_argument("file", help="Path to PPTX file")
+    p_slides.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
+
+    # --- PPTX: get slide ---
+    p_slide = subparsers.add_parser("pptx-slide", help="Get text from a specific slide")
+    p_slide.add_argument("file", help="Path to PPTX file")
+    p_slide.add_argument("slide_number", type=int, help="Slide number (1-based)")
+    p_slide.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
 
     args = parser.parse_args(argv)
 
@@ -58,6 +84,9 @@ def main(argv: list[str] | None = None) -> None:
         "extract": _cmd_extract,
         "search": _cmd_search,
         "metadata": _cmd_metadata,
+        "pptx-extract": _cmd_pptx_extract,
+        "pptx-slides": _cmd_pptx_slides,
+        "pptx-slide": _cmd_pptx_slide,
     }
     try:
         handlers[args.command](args)
@@ -68,7 +97,7 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _cmd_extract(args: argparse.Namespace) -> None:
-    """Handle the extract subcommand."""
+    """Handle the DOCX extract subcommand."""
     path = _validate_file(args.file)
 
     from kaos_office.docx.reader import parse_docx
@@ -105,7 +134,7 @@ def _cmd_extract(args: argparse.Namespace) -> None:
 
 
 def _cmd_search(args: argparse.Namespace) -> None:
-    """Handle the search subcommand."""
+    """Handle the DOCX search subcommand."""
     path = _validate_file(args.file)
 
     from kaos_content.search import search_document
@@ -149,7 +178,7 @@ def _cmd_search(args: argparse.Namespace) -> None:
 
 
 def _cmd_metadata(args: argparse.Namespace) -> None:
-    """Handle the metadata subcommand."""
+    """Handle the DOCX metadata subcommand."""
     path = _validate_file(args.file)
 
     from kaos_office.docx.metadata import DocxMetadata
@@ -171,6 +200,88 @@ def _cmd_metadata(args: argparse.Namespace) -> None:
         max_key = max(len(k) for k in d)
         for k, v in d.items():
             print(f"  {k:<{max_key + 2}}{v}")
+
+
+def _cmd_pptx_extract(args: argparse.Namespace) -> None:
+    """Handle the PPTX extract subcommand."""
+    path = _validate_file(args.file)
+
+    from kaos_office.pptx.reader import parse_pptx
+
+    doc = parse_pptx(path)
+
+    if args.format == "markdown":
+        from kaos_content.serializers.markdown import serialize_markdown
+
+        output = serialize_markdown(doc)
+    elif args.format == "text":
+        from kaos_content.serializers.text import serialize_text
+
+        output = serialize_text(doc)
+    elif args.format == "json":
+        output = doc.model_dump_json(indent=2)
+    else:
+        output = ""
+
+    if args.json_output:
+        envelope = {
+            "command": "pptx-extract",
+            "file": args.file,
+            "format": args.format,
+            "slides": len(doc.body),
+            "content": output,
+        }
+        _json_out(envelope)
+    elif args.output:
+        Path(args.output).write_text(output, encoding="utf-8")
+        print(f"Written to {args.output}", file=sys.stderr)
+    else:
+        print(output)
+
+
+def _cmd_pptx_slides(args: argparse.Namespace) -> None:
+    """Handle the PPTX list-slides subcommand."""
+    path = _validate_file(args.file)
+
+    from kaos_office.pptx.reader import list_slides
+
+    slides = list_slides(path)
+
+    if args.json_output:
+        envelope = {
+            "command": "pptx-slides",
+            "file": args.file,
+            "slide_count": len(slides),
+            "slides": slides,
+        }
+        _json_out(envelope)
+    else:
+        print(f"Slides: {len(slides)}")
+        print()
+        for s in slides:
+            title = s["title"] or "(untitled)"
+            notes = " [notes]" if s["has_notes"] else ""
+            print(f"  {s['slide_number']:>3}. {title}  ({s['shape_count']} shapes){notes}")
+
+
+def _cmd_pptx_slide(args: argparse.Namespace) -> None:
+    """Handle the PPTX get-slide subcommand."""
+    path = _validate_file(args.file)
+
+    from kaos_office.pptx.reader import get_slide_text
+
+    text = get_slide_text(path, args.slide_number)
+
+    if args.json_output:
+        envelope = {
+            "command": "pptx-slide",
+            "file": args.file,
+            "slide_number": args.slide_number,
+            "content": text,
+        }
+        _json_out(envelope)
+    else:
+        print(text)
 
 
 # --- Helpers ---

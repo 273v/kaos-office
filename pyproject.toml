@@ -30,15 +30,20 @@ dependencies = [
 
 [project.scripts]
 kaos-office = "kaos_office.cli:main"
+kaos-office-serve = "kaos_office.serve:main"
 
 [project.optional-dependencies]
 mcp = ["kaos-mcp>=0.1.0"]
 nlp = ["kaos-nlp-core>=0.1.0"]
+pptx = [
+    "python-pptx>=1.0",
+]
 
 [dependency-groups]
 dev = [
   "kaos-mcp>=0.1.0",
   "kaos-nlp-core>=0.1.0",
+  "python-pptx>=1.0",
   "pytest>=8.3.5",
   "pytest-asyncio>=0.26.0",
   "pytest-cov>=6.0.0",

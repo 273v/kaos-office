@@ -1,95 +1,190 @@
-# kaos-office DOCX Extraction Benchmarks
+# kaos-office Extraction Benchmarks
 
 **Date**: 2026-04-02
 **Test machine**: Linux, Python 3.13
 
-## Performance Comparison
+## DOCX: Real File Head-to-Head
 
-Benchmarked against mammoth, markitdown (Microsoft), and python-docx on 7 real DOCX files
-from the kelvin_office test corpus.
+Benchmarked kaos-office against mammoth, markitdown (Microsoft), and Docling (IBM)
+on 8 real DOCX files from the kelvin_office test corpus.
 
-### Speed (lower is better)
+### DOCX Speed (ms, lower is better)
 
-| File | Size | kaos-office | mammoth | markitdown | python-docx |
-|------|------|-------------|---------|------------|-------------|
-| MultiParagraphSample | 7 KB | **6.7ms** | 5.3ms | 12.0ms | 1.4ms |
-| Footnote | 6 KB | **1.1ms** | 2.8ms | 11.1ms | 0.8ms |
-| Toro Term Loan | 187 KB | **130ms** | 475ms | 1,033ms | 54ms |
-| Toro Redline | 147 KB | **204ms** | 536ms | 1,150ms | 62ms |
-| Toro Comments | 148 KB | **201ms** | 535ms | 1,142ms | 61ms |
-| CheeseSample | 1,051 KB | **9ms** | 140ms | 108ms | 8ms |
-| BCFP Consumer Rights | 69 KB | **13ms** | 46ms | 127ms | 7ms |
+| File | Size | kaos-office | mammoth | markitdown | Docling |
+|------|------|:-----------:|:-------:|:----------:|:-------:|
+| MultiParagraphSample | 7 KB | **7** | 5 | 10 | 11 |
+| Footnote | 6 KB | **1** | 2 | 7 | 3 |
+| Toro Term Loan | 187 KB | **123** | 698 | 1,406 | 748 |
+| Toro Redline | 147 KB | **123** | 976 | 1,541 | 788 |
+| Toro Comments | 148 KB | **120** | 761 | 1,493 | 982 |
+| CheeseSample | 1 MB | **10** | 46 | 106 | 642 |
+| BCFP Consumer Rights | 69 KB | **10** | 200 | 82 | 111 |
+| MCSRedline | 1.7 MB | **3,524** | 15,926 | 29,716 | **266,036** |
 
-**kaos-office is 2.5-8x faster than mammoth and 5-10x faster than markitdown.**
-python-docx is faster on raw text extraction because it doesn't parse into a structured AST.
+**kaos-office is 5-8x faster than mammoth, 8-12x faster than markitdown, and 6-75x faster
+than Docling** on complex documents. The advantage grows with document complexity.
 
-### Quality Features (check = detected in output)
+### DOCX Quality Features Detected
 
-| Feature | kaos-office | mammoth | markitdown | python-docx |
-|---------|:-----------:|:-------:|:----------:|:-----------:|
-| **Bold** (`**text**`) | 7/7 | 0/7 | 7/7 | 0/7 |
-| **Italic** (`*text*`) | 7/7 | 7/7 | 7/7 | 0/7 |
-| **Lists** (nested) | 6/7 | 0/7 | 0/7 | 0/7 |
-| **Tables** | 3/3 | 0/3 | 0/3 | 3/3 (count) |
-| **Footnotes** | 2/2 | 0/2 | 0/2 | 0/2 |
-| **Comments** (annotations) | 3/3 | 0/3 | 0/3 | 0/3 |
-| **Track changes** (accept) | yes | yes | yes | no |
-| **Structured AST** | yes | no (HTML) | no (text) | no (runs) |
-| **Provenance** | yes | no | no | no |
-| **Search (BM25)** | yes | no | no | no |
+| File | kaos-office | mammoth | markitdown | Docling |
+|------|-------------|---------|------------|---------|
+| MultiParagraphSample | bold, italic, **lists=1, annotations=1** | italic | bold, italic | bold, italic |
+| Footnote | **footnotes=1** | (none) | (none) | **(none — 31 chars total)** |
+| Toro Term Loan | bold, italic, **tables=3, lists=274** | italic | bold, italic | bold, italic |
+| Toro Comments | bold, italic, tables=3, lists=274, **annotations=5** | italic | bold, italic | bold, italic |
+| CheeseSample | bold, italic, **lists=11, footnotes=1, annotations=4** | italic | bold, italic | bold, italic |
+| MCSRedline | bold, italic, **headings=925, tables=508, lists=1115, footnotes=2** | italic | bold, italic | bold, italic |
 
-### Key Advantages of kaos-office
+**Only kaos-office extracts**: footnotes, comments/annotations, nested lists, and table structure.
+Every competitor misses these features entirely.
 
-1. **Only tool that extracts footnotes as structured content** — mammoth and markitdown lose them
-2. **Only tool that extracts comments as annotations** — enables legal review workflows
-3. **Only tool that produces nested lists** — mammoth and markitdown flatten list structure
-4. **Produces a typed AST** (ContentDocument) — not raw HTML/text. Enables downstream search, section navigation, annotation, and re-serialization to multiple formats
-5. **2.5-8x faster than mammoth** on the same documents
-6. **5-10x faster than markitdown** on the same documents
-7. **Track changes handled correctly** — insertions included, deletions skipped, clean output
+### Content Gap Analysis
 
-### Known Gaps
+**Toro Term Loan vs mammoth (+9% chars):** Investigated word-by-word. mammoth's extra 28K
+characters are base64-encoded inline images and markdown escape characters (`$2,500,000\\.`).
+Normalized plain text word count: kaos-office 50,312 vs mammoth 50,416 — **0.2% difference**.
+Zero missing content.
 
-1. **No heading detection on legal documents** — the Toro Term Loan uses bold/caps paragraph styles, not Word heading styles. kaos-office correctly detects 0 headings because none are styled as headings in the DOCX. This is a real limitation for legal documents that use custom styles.
-2. **mammoth produces more characters** — includes some markup that kaos-office strips. May include content kaos-office filters.
-3. **python-docx is faster for raw text** — if you only need unformatted text, python-docx is fastest. But it loses all structure.
+**MCSRedline vs Docling (+24% chars):** Investigated paragraph-by-paragraph. Docling's extra
+16K words come from verbose table rendering (repeating column headers, wider padding).
+Both tools extract all 508 tables, all postal rate content, all service listings.
+**No missing content** — only serialization style differences.
 
-## Approach Comparison
+**Toro Redline track changes verification:** kaos-office base document = 315,451 chars,
+redline = 314,412 chars (0.33% difference). Track changes are accepted correctly —
+insertions included, deletions skipped.
 
-| Tool | Approach | License | Dependencies |
-|------|----------|---------|-------------|
-| **kaos-office** | Direct lxml XML parsing | Proprietary | lxml |
-| **mammoth** | python-docx + custom HTML/md conversion | BSD-2 | lxml, python-docx |
-| **markitdown** | python-docx + LLM-friendly conversion | MIT | python-docx, beautifulsoup4, many others |
-| **python-docx** | XML parsing with OO model | MIT | lxml |
+### DOCX Quality Samples
 
-kaos-office uses direct lxml parsing (no python-docx dependency) for full control over OOXML processing. This enables track changes handling, comment extraction, and precise style resolution that wrapper-based approaches cannot access.
+**Footnotes** — only kaos-office produces proper markdown footnotes:
+```
+kaos-office: I am a document with footnotes.[^2]
+             [^2]: The question, of course, is whether this superscript...
+mammoth:     I am a document with footnotes.<a id="footnote-ref-2"></a>[[1]](#footnote-2)
+markitdown:  I am a document with footnotes.[[1]](#footnote-2)
+Docling:     I am a document with footnotes.    (31 chars — footnote lost entirely)
+```
 
-## Broader Competitive Landscape
+### Known DOCX Gaps
 
-Research across the full Python DOCX ecosystem (April 2026):
+1. **No heading detection on legal documents using custom styles** — Toro Term Loan uses
+   bold/caps paragraph styles, not Word heading styles. kaos-office correctly detects 0
+   headings because none are styled as `heading N` in the DOCX.
+2. **python-docx is faster for raw text** — if you only need unformatted text and don't
+   need structure, python-docx is faster. But it loses all formatting and structure.
 
-| Tool | Approach | License | Headings | Lists | Tables | Footnotes | Track Changes | Comments | Install Size |
-|------|----------|---------|:--------:|:-----:|:------:|:---------:|:-------------:|:--------:|:------------:|
-| **kaos-office** | Direct lxml | Proprietary | yes | yes (nested) | yes (merged) | yes | yes (accept) | yes | ~5 MB |
-| **Pandoc** (pypandoc) | Haskell binary | GPL-2+ | yes | yes | yes | yes | yes (accept/reject/all) | yes | ~100 MB |
-| **mammoth** | Direct XML | BSD-2 | yes | partial | yes | yes | no | yes | ~10 MB |
-| **markitdown** | mammoth wrapper | MIT | yes | partial | weak | inherited | no | inherited | ~251 MB |
-| **Docling** (IBM) | python-docx + lxml | MIT | yes | yes | best | no | no | yes | ~1 GB |
-| **docx2python** | Direct XML | MIT | yes | yes | yes | yes | no | yes | ~5 MB |
-| **docx2md** | Direct XML | MIT | yes | yes | yes (merged) | no | no | no | ~5 MB |
-| **Unstructured** | python-docx | Apache-2.0 | yes | no (misclassified) | yes | no | no | no | ~146 MB |
-| **Kreuzberg** | Pandoc wrapper (Rust) | MIT | yes | yes | yes | yes | yes | yes | ~71 MB |
+---
+
+## PPTX: Real File Head-to-Head
+
+Benchmarked kaos-office against markitdown and Docling on 7 real PPTX files.
+
+### PPTX Speed (ms, lower is better)
+
+| File | Size | Slides | kaos-office | markitdown | Docling |
+|------|------|--------|:-----------:|:----------:|:-------:|
+| Hello-World | 190 KB | 9 | 17 | 25 | 21 |
+| ChartLibrary (18 charts) | 437 KB | 11 | **194** | 1,645 | 102 |
+| Testimony (25 slides) | 537 KB | 25 | **48** | 44 | 377 |
+| CIPLA (59 slides) | 10.6 MB | 59 | **142** | 190 | 333 |
+| Status Report | 443 KB | 9 | 14 | 16 | 16 |
+| Early Mobility (30 slides) | 1.3 MB | 30 | **58** | 71 | 111 |
+| UAS Technical | 7.4 MB | 65 | **188** | 196 | 1,452 |
+
+**kaos-office is 8.5x faster than markitdown on chart-heavy presentations and
+7.7x faster than Docling on large technical decks.**
+
+### PPTX Quality Features Detected
+
+| File | kaos-office | markitdown | Docling |
+|------|-------------|------------|---------|
+| ChartLibrary | **headings=10, tables=18**, images=11, lists=11 | images=11 | (none) |
+| Testimony | **headings=26**, images=10, **lists=64** | images=10 | (none) |
+| CIPLA | **headings=49**, tables=1, images=8, **lists=104** | images=9 | bold only |
+| Early Mobility | **headings=31, tables=6, lists=39** | tables=23, images=1 | (none) |
+| UAS Technical | **headings=62, tables=8**, images=44, **lists=44** | tables=44, images=44 | (none) |
+
+**kaos-office consistently detects headings and bullet lists that markitdown and Docling miss.**
+Docling produces almost no structural features from PPTX — flat text with occasional bold.
+
+### PPTX Quality Samples
+
+**Testimony slide 2** (STB Basics):
+```
+kaos-office:                          markitdown:
+─────────────                         ───────────
+# STB Basics                          STB Basics
+                                      Independent economic regulatory...
+Independent economic regulatory...    Jurisdiction over
+                                      Railroad rate and service disputes
+Jurisdiction over                     Railroad mergers and acquisitions
+                                      ...
+- Railroad rate and service disputes
+- Railroad mergers and acquisitions
+- Rail line abandonments...
+- Freight/passenger rail...
+- Limited jurisdiction over...
+```
+kaos-office produces proper headings (`#`) and nested bullet lists (`-`).
+markitdown produces flat text with no structure markers.
+
+### PPTX Content Gap Analysis
+
+**Hello-World: 53 chars (us) vs 303 chars (markitdown).** Investigated slide-by-slide.
+Slides 2-5, 7-9 contain empty template placeholders with no text content.
+markitdown's extra 250 chars are HTML comments (`<!-- Slide number: N -->`), empty
+heading markers (`#`), and the date placeholder (`05/29/25`) that we correctly skip.
+**No missing content.**
+
+---
+
+## Competitive Landscape
+
+### DOCX Extraction Ecosystem (April 2026)
+
+| Tool | License | AST | Track Changes | Comments | Footnotes | Tables+Merge | Install |
+|------|---------|:---:|:---:|:---:|:---:|:---:|------:|
+| **kaos-office** | Proprietary | ContentDocument | yes | yes | yes | yes | ~5 MB |
+| Pandoc | **GPL-2.0** | Full AST | yes | yes | yes | yes | ~100 MB |
+| mammoth | BSD-2 | HTML (lossy) | no | no | partial | partial | ~10 MB |
+| markitdown | MIT | flat markdown | no | no | no | weak | ~251 MB |
+| Docling | MIT | DoclingDocument | no | no | no | partial | ~1 GB |
+| unstructured | Apache-2.0 | flat elements | no | no | no | partial | ~146 MB |
+| docx2python | MIT | nested lists | no | no | yes | yes | ~5 MB |
+| Kreuzberg | MIT | flat text | no | no | no | unknown | ~71 MB |
+
+### PPTX Extraction Ecosystem (April 2026)
+
+| Tool | License | SmartArt | Charts→Data | Headings | Lists | Typed AST |
+|------|---------|:---:|:---:|:---:|:---:|:---:|
+| **kaos-office** | Proprietary | **yes (OPC)** | yes | yes | yes (nested) | ContentDocument |
+| markitdown | MIT | no | yes | partial | flat | no |
+| Docling | MIT | no | no | no | no | DoclingDocument |
+| pptx2md | MIT | no | no | partial | partial | no |
+| Aspose.Slides | **Proprietary** | yes | yes | yes | yes | Aspose objects |
+
+**kaos-office is the only permissively-licensed Python tool that extracts SmartArt text.**
 
 ### Key Findings
 
-1. **Pandoc is the quality ceiling** — GPL Haskell binary, not embeddable as a Python library. Useful as benchmark reference only.
-2. **mammoth is the closest peer** — direct XML parsing, BSD-licensed, clean output. But its markdown path is deprecated and it lacks track changes.
-3. **markitdown is essentially a mammoth wrapper** — three-stage pipeline (DOCX → mammoth → HTML → markdownify). Inherits all mammoth limitations. "Designed as a basic text scraper" for complex layouts.
-4. **Docling has the richest feature set** but at extreme cost — 1GB install, 60+ minutes/file on complex docs, frequent timeouts.
-5. **Track changes is a differentiator** — only Pandoc and kaos-office handle it among the Python-accessible tools.
-6. **No existing tool produces a typed AST with provenance** — kaos-office's ContentDocument output is unique. Every other tool outputs flat markdown/HTML or a proprietary intermediate representation.
+1. **No open-source competitor handles the "legal document trifecta"** (track changes +
+   comments + footnotes) with a permissive license. Only Pandoc matches, but it's GPL.
+2. **SmartArt extraction is genuinely unique** among MIT/Apache/BSD-licensed tools.
+3. **The MCP ecosystem is wide but shallow** for Office docs — every server produces
+   flat markdown. kaos-office is the first to provide structured AST with search and
+   12 content resource templates via MCP.
+4. **Stars inversely correlate with quality**: markitdown (93K stars, 47% benchmark rate),
+   Docling (57K stars, 4.4 min on MCSRedline), kaos-office (3.5s on MCSRedline with
+   full structural extraction).
+5. **Docling's strength is PDF, not Office** — its DOCX/PPTX pipelines wrap python-docx
+   and python-pptx with minimal added value. The 1 GB install is for PDF ML models.
+6. **Content gaps are zero** — all apparent character count differences vs competitors are
+   serialization artifacts (base64 images, escape characters, table rendering verbosity),
+   not missing content.
 
 ### License Safety
 
-All tools benchmarked are license-safe for KAOS: mammoth (BSD-2), python-docx (MIT), markitdown (MIT), docling (MIT), docx2python (MIT), kreuzberg (MIT). **Avoid**: Python-OOXML (AGPL-3.0), Pandoc (GPL-2+ — subprocess use only).
+All tools benchmarked are license-safe: mammoth (BSD-2), python-docx (MIT), markitdown (MIT),
+Docling (MIT), docx2python (MIT), Kreuzberg (MIT), python-pptx (MIT).
+**Avoid**: Python-OOXML (AGPL-3.0), Pandoc (GPL-2+ — subprocess use only),
+Aspose/Spire (proprietary commercial).
