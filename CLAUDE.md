@@ -18,14 +18,23 @@
 - Tables handle `gridSpan`, `rowSpan`, `hMerge`, `vMerge` continuation cells.
 - Speaker notes extracted as `Div(classes="speaker-notes")`.
 
+## XLSX Extraction (Phase 2C — complete)
+- Uses **python-calamine** (MIT, Rust, 7-28x faster than openpyxl) for data extraction.
+- Produces `TabularDocument` (from kaos-content), not `ContentDocument` — tabular data, not flow content.
+- Each worksheet → `Table` with typed columns via `ColumnType` (13 types).
+- Calamine returns Python-native types (int, float, str, bool, date, datetime, time, timedelta).
+- Formula extraction via openpyxl (optional `[xlsx-formulas]` extra) — stores in `table.metadata["formulas"]`.
+- Merged cell ranges preserved in `table.metadata["merged_ranges"]`.
+- Header row configurable (default: row 0). Rows above header are skipped.
+
 ## Shared Infrastructure
-- All extraction produces kaos-content `ContentDocument` AST with provenance (extractor tag, source URI).
+- DOCX/PPTX produce `ContentDocument`; XLSX produces `TabularDocument`. Both are kaos-content model types.
 - OPC layer (`opc/`) is format-agnostic — shared by DOCX, XLSX, PPTX. Built as proper classes to support L1 (read), L2 (write), L3 (round-trip).
 - Security: ZIP bomb detection, path traversal prevention, XML bomb protection via `lxml.etree.XMLParser(resolve_entities=False)`.
 - Follow the KAOS Python QA process: `ruff format`, `ruff check --fix`, `ty check`, `pytest`.
-- 8 MCP tools total (5 DOCX + 3 PPTX). Register with `register_office_tools(runtime)`.
+- 12 MCP tools total (5 DOCX + 3 PPTX + 4 XLSX). Register with `register_office_tools(runtime)`.
 - All MCP tools use shared `_OFFICE_ANNOTATIONS` (readOnly, idempotent, !destructive, !openWorld).
 - Tool error messages must include recovery guidance (what went wrong + how to fix it + alternative tool).
 - `search_document()` is imported from kaos-content (canonical, shared with kaos-pdf and kaos-web).
-- CLI: 6 subcommands (extract, search, metadata for DOCX; pptx-extract, pptx-slides, pptx-slide for PPTX).
+- CLI: 9 subcommands (3 DOCX + 3 PPTX + 3 XLSX).
 - **Never add AGPL/GPL dependencies.** This is a proprietary codebase.

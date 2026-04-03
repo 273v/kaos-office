@@ -112,4 +112,4 @@ class TestToolRegistration:
 
         runtime = KaosRuntime.default()
         count = register_office_tools(runtime)
-        assert count == 8  # 5 DOCX + 3 PPTX
+        assert count == 12  # 5 DOCX + 3 PPTX + 4 XLSX

@@ -590,15 +590,217 @@ class GetSlideTool(KaosTool):
             )
 
 
+def _validate_xlsx_path(path_str: str) -> Path | None:
+    """Validate an XLSX file path exists and return it, or None."""
+    p = Path(path_str)
+    if not p.exists():
+        return None
+    return p
+
+
+class ParseXlsxTool(KaosTool):
+    """Parse an XLSX file into a TabularDocument."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-parse-xlsx",
+            display_name="Parse XLSX",
+            description=(
+                "Parse an Excel workbook into a structured TabularDocument with typed columns. "
+                "Each worksheet becomes a table. Use kaos-office-list-sheets-xlsx first."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.EXTRACT,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(name="path", type="string", description="Path to the XLSX file."),
+                ParameterSchema(
+                    name="sheets",
+                    type="array",
+                    description="Sheet names to extract. Default: all visible.",
+                    required=False,
+                ),
+                ParameterSchema(
+                    name="header_row",
+                    type="integer",
+                    description="0-based header row index. Default: 0.",
+                    required=False,
+                    default=0,
+                ),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path_str = inputs["path"]
+        path = _validate_xlsx_path(path_str)
+        if path is None:
+            return ToolResult.create_error(f"File not found: {path_str}.")
+
+        try:
+            from kaos_content.serializers.tabular import serialize_tabular_summary
+
+            from kaos_office.xlsx.reader import parse_xlsx
+
+            doc = parse_xlsx(
+                path, sheets=inputs.get("sheets"), header_row=inputs.get("header_row", 0)
+            )
+            summary = serialize_tabular_summary(doc)
+
+            if context is not None and context.runtime is not None:
+                from kaos_content.artifacts import store_tabular
+
+                manifest = await store_tabular(doc, context.runtime, context, name=path.stem)
+                return manifest.to_tool_result(
+                    summary=summary,
+                    structured_content={
+                        "artifact_id": manifest.artifact_id,
+                        "table_count": len(doc.tables),
+                        "tables": [{"name": t.name, "row_count": t.row_count} for t in doc.tables],
+                    },
+                )
+            return ToolResult.create_text(summary)
+        except ImportError:
+            return ToolResult.create_error(
+                "XLSX requires python-calamine. pip install kaos-office[xlsx]"
+            )
+        except Exception as exc:
+            return ToolResult.create_error(f"XLSX extraction failed: {exc}.")
+
+
+class ListSheetsXlsxTool(KaosTool):
+    """List sheets in an XLSX file."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-list-sheets-xlsx",
+            display_name="List XLSX Sheets",
+            description="List all sheets in an Excel workbook with dimensions.",
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.EXTRACT,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(name="path", type="string", description="Path to the XLSX file."),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path = _validate_xlsx_path(inputs["path"])
+        if path is None:
+            return ToolResult.create_error(f"File not found: {inputs['path']}.")
+        try:
+            from kaos_office.xlsx.reader import list_sheets
+
+            return ToolResult.create_success(output={"sheets": list_sheets(path)})
+        except ImportError:
+            return ToolResult.create_error(
+                "XLSX requires python-calamine. pip install kaos-office[xlsx]"
+            )
+        except Exception as exc:
+            return ToolResult.create_error(f"Failed to list sheets: {exc}.")
+
+
+class GetSheetXlsxTool(KaosTool):
+    """Get a single sheet's data as TSV."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-get-sheet-xlsx",
+            display_name="Get XLSX Sheet",
+            description="Extract a single sheet's data. Use list-sheets-xlsx to see available sheets.",
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.EXTRACT,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(name="path", type="string", description="Path to the XLSX file."),
+                ParameterSchema(name="sheet", type="string", description="Sheet name."),
+                ParameterSchema(
+                    name="max_rows",
+                    type="integer",
+                    description="Max rows. Default: 100.",
+                    required=False,
+                    default=100,
+                ),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path = _validate_xlsx_path(inputs["path"])
+        if path is None:
+            return ToolResult.create_error(f"File not found: {inputs['path']}.")
+        try:
+            from kaos_content.serializers.tabular import serialize_tsv
+
+            from kaos_office.xlsx.reader import parse_xlsx
+
+            doc = parse_xlsx(path, sheets=[inputs["sheet"]], max_rows=inputs.get("max_rows", 100))
+            if not doc.tables:
+                return ToolResult.create_error(f"Sheet '{inputs['sheet']}' not found.")
+            return ToolResult.create_text(serialize_tsv(doc.tables[0]))
+        except ImportError:
+            return ToolResult.create_error(
+                "XLSX requires python-calamine. pip install kaos-office[xlsx]"
+            )
+        except Exception as exc:
+            return ToolResult.create_error(f"Failed to extract sheet: {exc}.")
+
+
+class XlsxMetadataTool(KaosTool):
+    """Show XLSX workbook metadata."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-xlsx-metadata",
+            display_name="XLSX Metadata",
+            description="Show workbook metadata: sheet names, dimensions, column types.",
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.EXTRACT,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(name="path", type="string", description="Path to the XLSX file."),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path = _validate_xlsx_path(inputs["path"])
+        if path is None:
+            return ToolResult.create_error(f"File not found: {inputs['path']}.")
+        try:
+            from kaos_content.artifacts import tabular_summary
+
+            from kaos_office.xlsx.reader import parse_xlsx
+
+            doc = parse_xlsx(path)
+            return ToolResult.create_success(output=tabular_summary(doc))
+        except ImportError:
+            return ToolResult.create_error(
+                "XLSX requires python-calamine. pip install kaos-office[xlsx]"
+            )
+        except Exception as exc:
+            return ToolResult.create_error(f"Failed to read XLSX metadata: {exc}.")
+
+
 def register_office_tools(runtime: KaosRuntime) -> int:
-    """Register all Office MCP tools with a runtime.
-
-    Args:
-        runtime: KaosRuntime to register tools with.
-
-    Returns:
-        Number of tools registered.
-    """
+    """Register all Office MCP tools with a runtime."""
     tools: list[KaosTool] = [
         ParseDocxTool(),
         GetDocxTextTool(),
@@ -608,6 +810,10 @@ def register_office_tools(runtime: KaosRuntime) -> int:
         ParsePptxTool(),
         ListSlidesTool(),
         GetSlideTool(),
+        ParseXlsxTool(),
+        ListSheetsXlsxTool(),
+        GetSheetXlsxTool(),
+        XlsxMetadataTool(),
     ]
     for tool in tools:
         runtime.tools.register_tool(tool)

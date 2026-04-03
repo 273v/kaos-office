@@ -78,6 +78,45 @@ def main(argv: list[str] | None = None) -> None:
     p_slide.add_argument("slide_number", type=int, help="Slide number (1-based)")
     p_slide.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
 
+    # --- XLSX: extract ---
+    p_xlsx = subparsers.add_parser("xlsx-extract", help="Extract XLSX content as tabular data")
+    p_xlsx.add_argument("file", help="Path to XLSX file")
+    p_xlsx.add_argument(
+        "--format",
+        choices=["csv", "tsv", "markdown", "json"],
+        default="tsv",
+        help="Output format (default: tsv)",
+    )
+    p_xlsx.add_argument("--sheet", help="Specific sheet name (default: all)")
+    p_xlsx.add_argument(
+        "--header-row", type=int, default=0, help="Header row, 0-based (default: 0)"
+    )
+    p_xlsx.add_argument("--max-rows", type=int, help="Max data rows per sheet")
+    p_xlsx.add_argument("--output", "-o", help="Write to file instead of stdout")
+    p_xlsx.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
+
+    # --- XLSX: list sheets ---
+    p_xlsx_sheets = subparsers.add_parser("xlsx-sheets", help="List sheets in XLSX file")
+    p_xlsx_sheets.add_argument("file", help="Path to XLSX file")
+    p_xlsx_sheets.add_argument(
+        "--json", dest="json_output", action="store_true", help="JSON envelope"
+    )
+
+    # --- XLSX: get sheet ---
+    p_xlsx_sheet = subparsers.add_parser("xlsx-sheet", help="Extract a single sheet")
+    p_xlsx_sheet.add_argument("file", help="Path to XLSX file")
+    p_xlsx_sheet.add_argument("sheet", help="Sheet name")
+    p_xlsx_sheet.add_argument(
+        "--format",
+        choices=["csv", "tsv", "markdown", "json"],
+        default="tsv",
+        help="Output format (default: tsv)",
+    )
+    p_xlsx_sheet.add_argument("--max-rows", type=int, default=100, help="Max rows (default: 100)")
+    p_xlsx_sheet.add_argument(
+        "--json", dest="json_output", action="store_true", help="JSON envelope"
+    )
+
     args = parser.parse_args(argv)
 
     handlers = {
@@ -87,6 +126,9 @@ def main(argv: list[str] | None = None) -> None:
         "pptx-extract": _cmd_pptx_extract,
         "pptx-slides": _cmd_pptx_slides,
         "pptx-slide": _cmd_pptx_slide,
+        "xlsx-extract": _cmd_xlsx_extract,
+        "xlsx-sheets": _cmd_xlsx_sheets,
+        "xlsx-sheet": _cmd_xlsx_sheet,
     }
     try:
         handlers[args.command](args)
@@ -297,10 +339,124 @@ def _validate_file(path_str: str) -> Path:
 
 def _json_out(data: dict) -> None:
     """Write JSON to stdout."""
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+    print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
 
 def _error(msg: str) -> None:
     """Print error to stderr and exit."""
     print(msg, file=sys.stderr)
     sys.exit(1)
+
+
+# --- XLSX command handlers ---
+
+
+def _cmd_xlsx_extract(args: argparse.Namespace) -> None:
+    path = _validate_file(args.file)
+    from kaos_content.serializers.tabular import (
+        serialize_csv,
+        serialize_json_records,
+        serialize_markdown_table,
+        serialize_tsv,
+    )
+
+    from kaos_office.xlsx.reader import parse_xlsx
+
+    sheets = [args.sheet] if args.sheet else None
+    doc = parse_xlsx(path, sheets=sheets, header_row=args.header_row, max_rows=args.max_rows)
+
+    if args.json_output:
+        _json_out(
+            {
+                "command": "xlsx-extract",
+                "file": Path(args.file).name,
+                "table_count": len(doc.tables),
+                "total_rows": sum(t.row_count for t in doc.tables),
+                "tables": [
+                    {
+                        "name": t.name,
+                        "row_count": t.row_count,
+                        "columns": [
+                            {"name": c.name, "type": c.column_type.value} for c in t.columns
+                        ],
+                    }
+                    for t in doc.tables
+                ],
+            }
+        )
+        return
+
+    formatters = {
+        "tsv": serialize_tsv,
+        "csv": serialize_csv,
+        "json": serialize_json_records,
+        "markdown": serialize_markdown_table,
+    }
+    parts = []
+    for table in doc.tables:
+        if len(doc.tables) > 1:
+            parts.append(f"--- {table.name} ({table.row_count} rows) ---\n")
+        parts.append(formatters[args.format](table))
+    output = "\n".join(parts)
+    if args.output:
+        Path(args.output).write_text(output, encoding="utf-8")
+        print(f"Written to {args.output}", file=sys.stderr)
+    else:
+        print(output, end="")
+
+
+def _cmd_xlsx_sheets(args: argparse.Namespace) -> None:
+    path = _validate_file(args.file)
+    from kaos_office.xlsx.reader import list_sheets
+
+    sheets = list_sheets(path)
+    if args.json_output:
+        _json_out(
+            {
+                "command": "xlsx-sheets",
+                "file": Path(args.file).name,
+                "sheets": sheets,
+                "count": len(sheets),
+            }
+        )
+        return
+    for s in sheets:
+        vis = "" if s["visible"] else " (hidden)"
+        print(f"  {s['name']}: {s['rows']} rows x {s['columns']} cols{vis}")
+
+
+def _cmd_xlsx_sheet(args: argparse.Namespace) -> None:
+    path = _validate_file(args.file)
+    from kaos_content.serializers.tabular import (
+        serialize_csv,
+        serialize_json_records,
+        serialize_markdown_table,
+        serialize_tsv,
+    )
+
+    from kaos_office.xlsx.reader import parse_xlsx
+
+    doc = parse_xlsx(path, sheets=[args.sheet], max_rows=args.max_rows)
+    if not doc.tables:
+        _error(f"Sheet '{args.sheet}' not found. Use xlsx-sheets to list available sheets.")
+
+    table = doc.tables[0]
+    if args.json_output:
+        _json_out(
+            {
+                "command": "xlsx-sheet",
+                "file": Path(args.file).name,
+                "sheet": table.name,
+                "row_count": table.row_count,
+                "columns": [{"name": c.name, "type": c.column_type.value} for c in table.columns],
+            }
+        )
+        return
+
+    formatters = {
+        "tsv": serialize_tsv,
+        "csv": serialize_csv,
+        "json": serialize_json_records,
+        "markdown": serialize_markdown_table,
+    }
+    print(formatters[args.format](table), end="")
