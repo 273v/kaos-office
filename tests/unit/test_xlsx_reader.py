@@ -73,7 +73,7 @@ class TestParseXlsx:
     def test_provenance(self) -> None:
         doc = parse_xlsx(PAYMENT, header_row=2)
         assert doc.provenance is not None
-        assert doc.provenance.extractor == "kaos-office/xlsx/calamine"
+        assert doc.provenance.extractor.startswith("kaos-office/xlsx/")
         assert doc.metadata.document_type == "xlsx"
 
     def test_missing_file(self) -> None:

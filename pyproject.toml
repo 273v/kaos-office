@@ -38,6 +38,12 @@ nlp = ["kaos-nlp-core>=0.1.0"]
 pptx = [
     "python-pptx>=1.0",
 ]
+xlsx-calamine = [
+    "python-calamine>=0.6",
+]
+xlsx-formulas = [
+    "openpyxl>=3.1",
+]
 
 [dependency-groups]
 dev = [

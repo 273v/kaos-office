@@ -282,6 +282,39 @@ GD_TABLE = "http://schemas.openxmlformats.org/drawingml/2006/table"
 GD_CHART = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 GD_DIAGRAM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
 
+# --- Pre-computed SpreadsheetML tags ---
+SML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
+SML_WORKBOOK = qn(SML, "workbook")
+SML_SHEETS = qn(SML, "sheets")
+SML_SHEET = qn(SML, "sheet")
+SML_WORKBOOK_PR = qn(SML, "workbookPr")
+SML_WORKSHEET = qn(SML, "worksheet")
+SML_SHEET_DATA = qn(SML, "sheetData")
+SML_ROW = qn(SML, "row")
+SML_CELL = qn(SML, "c")
+SML_VALUE = qn(SML, "v")
+SML_FORMULA = qn(SML, "f")
+SML_SST = qn(SML, "sst")
+SML_SI = qn(SML, "si")
+SML_T = qn(SML, "t")
+SML_R = qn(SML, "r")
+SML_MERGE_CELLS = qn(SML, "mergeCells")
+SML_MERGE_CELL = qn(SML, "mergeCell")
+SML_NUM_FMTS = qn(SML, "numFmts")
+SML_NUM_FMT = qn(SML, "numFmt")
+SML_CELL_XFS = qn(SML, "cellXfs")
+SML_XF = qn(SML, "xf")
+SML_DIMENSION = qn(SML, "dimension")
+SML_INLINE_STR = qn(SML, "is")
+
+# SpreadsheetML relationship types
+RT_WORKSHEET = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+RT_SHARED_STRINGS = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings"
+)
+RT_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+
 # --- MIME Types ---
 DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
