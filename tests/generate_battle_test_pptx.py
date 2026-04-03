@@ -81,7 +81,7 @@ def make_rich_text_pptx():
     p.text = "Unicode: café résumé naïve 日本語 中文 العربية"
 
     p2 = tf2.add_paragraph()
-    p2.text = "Special chars: <>&\"' © ® ™ — – … € £ ¥"
+    p2.text = "Special chars: <>&\"' © ® ™ — - … € £ ¥"
 
     p3 = tf2.add_paragraph()
     p3.text = ""  # Empty paragraph
@@ -146,10 +146,7 @@ def make_bullets_pptx():
 
     # Add numbered bullets via XML
     for i, text in enumerate(["Step one", "Step two", "Step three"]):
-        if i == 0:
-            p = tf2.paragraphs[0]
-        else:
-            p = tf2.add_paragraph()
+        p = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
         p.text = text
         p.level = 0
         # Set auto-numbering
@@ -217,7 +214,7 @@ def make_tables_pptx():
 
     # Slide 3: Empty table
     slide3 = prs.slides.add_slide(prs.slide_layouts[5])
-    table_shape3 = slide3.shapes.add_table(2, 2, left, top, width, height)
+    _table_shape3 = slide3.shapes.add_table(2, 2, left, top, width, height)
     # Leave all cells empty
 
     path = FIXTURES_DIR / "tables.pptx"
@@ -275,7 +272,7 @@ def make_charts_pptx():
     line_data.add_series("2024", (10, 20, 15, 25, 30))
     line_data.add_series("2025", (12, 18, 22, 28, 35))
 
-    chart_frame3 = slide3.shapes.add_chart(
+    _chart_frame3 = slide3.shapes.add_chart(
         XL_CHART_TYPE.LINE,
         Inches(1),
         Inches(1),
@@ -409,10 +406,7 @@ def make_many_slides_pptx():
 
         # Add multiple paragraphs
         for j in range(10):
-            if j == 0:
-                p = tf.paragraphs[0]
-            else:
-                p = tf.add_paragraph()
+            p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
             p.text = (
                 f"Bullet point {j + 1} on slide {i + 1} with some filler text to test throughput"
             )
@@ -443,10 +437,7 @@ def make_mixed_content_pptx():
     txBox2 = slide.shapes.add_textbox(Inches(0.5), Inches(1.2), Inches(4), Inches(2))
     tf2 = txBox2.text_frame
     for i, text in enumerate(["Key finding one", "Key finding two", "Key finding three"]):
-        if i == 0:
-            p = tf2.paragraphs[0]
-        else:
-            p = tf2.add_paragraph()
+        p = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
         p.text = text
         # Add bullet character via XML
         pPr = p._p.get_or_add_pPr()

@@ -259,7 +259,8 @@ async def test_list_slides_via_mcp(tmp_path: Path) -> None:
             {"path": str(pptx_path)},
         )
         assert not result.isError
-        slides = json.loads(result.content[0].text)
+        assert result.structuredContent is not None
+        slides = result.structuredContent["slides"]
         assert len(slides) == 3
         assert slides[0]["slide_number"] == 1
 
@@ -433,7 +434,8 @@ async def test_real_pptx_via_mcp_pipeline(tmp_path: Path) -> None:
             {"path": str(pptx_path)},
         )
         assert not slides_result.isError
-        slides = json.loads(slides_result.content[0].text)
+        assert slides_result.structuredContent is not None
+        slides = slides_result.structuredContent["slides"]
         assert len(slides) == 9
 
         # Get slide 1

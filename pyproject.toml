@@ -118,6 +118,7 @@ known-first-party = ["kaos_office"]
 
 [tool.ty.src]
 include = ["kaos_office", "tests"]
+exclude = ["tests/benchmark_real_comparison.py"]
 
 [tool.uv]
 package = true

@@ -57,7 +57,7 @@ class TestPptxToolExecution:
         tool = ParsePptxTool()
         result = await tool.execute({"path": "/nonexistent/test.pptx"})
         assert result.isError is True
-        assert "not found" in result.content[0].text.lower()
+        assert "not found" in result.require_text().lower()
 
     async def test_parse_pptx_success(self, pptx_file):
         from kaos_office.tools import ParsePptxTool
@@ -65,7 +65,7 @@ class TestPptxToolExecution:
         tool = ParsePptxTool()
         result = await tool.execute({"path": str(pptx_file)})
         assert result.isError is not True
-        assert "Parsed" in result.content[0].text
+        assert "Parsed" in result.require_text()
 
     async def test_list_slides_success(self, pptx_file):
         from kaos_office.tools import ListSlidesTool
@@ -74,9 +74,8 @@ class TestPptxToolExecution:
         result = await tool.execute({"path": str(pptx_file)})
         assert result.isError is not True
         # Summary in content, structured data in structuredContent
-        assert "1 slide" in result.content[0].text
-        assert result.structuredContent is not None
-        slides = result.structuredContent["slides"]
+        assert "1 slide" in result.require_text()
+        slides = result.require_structured()["slides"]
         assert len(slides) == 1
         assert slides[0]["slide_number"] == 1
 
@@ -86,7 +85,7 @@ class TestPptxToolExecution:
         tool = GetSlideTool()
         result = await tool.execute({"path": str(pptx_file), "slide_number": 1})
         assert result.isError is not True
-        assert "Test Title" in result.content[0].text
+        assert "Test Title" in result.require_text()
 
     async def test_get_slide_out_of_range(self, pptx_file):
         from kaos_office.tools import GetSlideTool
@@ -94,7 +93,7 @@ class TestPptxToolExecution:
         tool = GetSlideTool()
         result = await tool.execute({"path": str(pptx_file), "slide_number": 99})
         assert result.isError is True
-        assert "out of range" in result.content[0].text.lower()
+        assert "out of range" in result.require_text().lower()
 
     async def test_list_slides_file_not_found(self):
         from kaos_office.tools import ListSlidesTool
