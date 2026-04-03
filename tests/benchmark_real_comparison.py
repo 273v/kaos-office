@@ -9,9 +9,6 @@ Run with: uv run python tests/benchmark_real_comparison.py
 
 from __future__ import annotations
 
-import json
-import re
-import sys
 import time
 from pathlib import Path
 
@@ -37,6 +34,7 @@ DOCX_FILES = [
 def bench_kaos_docx(path: Path) -> dict:
     from kaos_content.serializers.markdown import serialize_markdown
     from kaos_content.serializers.text import serialize_text
+
     from kaos_office.docx.reader import parse_docx
 
     t0 = time.perf_counter()
@@ -144,6 +142,7 @@ PPTX_FILES = [
 def bench_kaos_pptx(path: Path) -> dict:
     from kaos_content.serializers.markdown import serialize_markdown
     from kaos_content.serializers.text import serialize_text
+
     from kaos_office.pptx.reader import parse_pptx
 
     t0 = time.perf_counter()
