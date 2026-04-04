@@ -11,7 +11,6 @@ footnotes, endnotes, comments, track changes (accept/skip), page breaks.
 from __future__ import annotations
 
 import contextlib
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,6 +32,7 @@ from kaos_content.model.inlines import (
     Underline,
 )
 from kaos_content.model.table import Cell, Row, TableSection
+from kaos_core.logging import get_logger
 from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.docx.metadata import DocxMetadata
@@ -98,7 +98,7 @@ from kaos_office.ooxml.namespace import (
 )
 from kaos_office.opc.package import OPCPackage
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _EXTRACTOR = "kaos-office/docx"
 
