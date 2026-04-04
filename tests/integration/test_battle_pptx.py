@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from kaos_content.model.blocks import Div
 from kaos_content.serializers.markdown import serialize_markdown
 from kaos_content.serializers.text import serialize_text
 
@@ -326,6 +327,7 @@ class TestEdgeCases:
     def test_whitespace_only_skipped(self):
         # Slide 3 has only whitespace — should produce empty slide div
         div3 = self.doc.body[2]
+        assert isinstance(div3, Div)
         assert len(div3.children) == 0
 
     def test_overlapping_shapes(self):

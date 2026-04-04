@@ -109,7 +109,7 @@ def bench_markitdown(path: Path) -> dict:
 
 def bench_python_docx(path: Path) -> dict:
     """Benchmark python-docx text extraction."""
-    import docx
+    import docx  # ty: ignore[unresolved-import]  # optional competitor dep
 
     t0 = time.perf_counter()
     document = docx.Document(str(path))

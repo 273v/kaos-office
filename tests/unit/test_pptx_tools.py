@@ -16,6 +16,7 @@ class TestPptxToolMetadata:
         tool = ParsePptxTool()
         meta = tool.metadata
         assert meta.name == "kaos-office-parse-pptx"
+        assert meta.annotations is not None
         assert meta.annotations.readOnlyHint is True
         assert meta.annotations.destructiveHint is False
 
@@ -25,6 +26,7 @@ class TestPptxToolMetadata:
         tool = ListSlidesTool()
         meta = tool.metadata
         assert meta.name == "kaos-office-list-slides"
+        assert meta.annotations is not None
         assert meta.annotations.readOnlyHint is True
 
     def test_get_slide_tool(self):
@@ -33,6 +35,7 @@ class TestPptxToolMetadata:
         tool = GetSlideTool()
         meta = tool.metadata
         assert meta.name == "kaos-office-get-slide"
+        assert meta.annotations is not None
         assert meta.annotations.readOnlyHint is True
         # Should have slide_number parameter
         params = {p.name for p in meta.input_schema}

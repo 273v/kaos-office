@@ -20,12 +20,20 @@ from kaos_core.vfs import VFSConfig, VirtualFileSystem
 from kaos_mcp import create_app
 from mcp import types
 from mcp.shared.memory import create_connected_server_and_client_session
+from mcp.types import TextContent
 from pydantic import AnyUrl
 
 from kaos_office import register_office_tools
 from tests.conftest import KELVIN_FIXTURES, KELVIN_PPTX_FIXTURES, make_minimal_docx
 
 BATTLE_DIR = Path(__file__).parent.parent / "fixtures" / "pptx" / "battle"
+
+
+def _get_text(result: types.CallToolResult, index: int = 0) -> str:
+    """Extract text from MCP CallToolResult, narrowing the union type."""
+    content = result.content[index]
+    assert isinstance(content, TextContent)
+    return content.text
 
 
 def _make_runtime(tmp_path: Path) -> KaosRuntime:
@@ -124,7 +132,7 @@ async def test_get_text_via_mcp(tmp_path: Path) -> None:
             {"path": str(docx_path)},
         )
         assert not result.isError
-        text = result.content[0].text
+        text = _get_text(result)
         assert "Hello" in text
 
 
@@ -145,7 +153,7 @@ async def test_get_markdown_via_mcp(tmp_path: Path) -> None:
             {"path": str(docx_path)},
         )
         assert not result.isError
-        text = result.content[0].text
+        text = _get_text(result)
         assert "Hello" in text
 
 
@@ -211,7 +219,7 @@ async def test_docx_error_handling_via_mcp(tmp_path: Path) -> None:
             {"path": "/nonexistent/path/test.docx"},
         )
         assert result.isError
-        error_text = result.content[0].text
+        error_text = _get_text(result)
         assert "not found" in error_text.lower()
         # Error should include recovery guidance
         assert "path" in error_text.lower()
@@ -282,7 +290,7 @@ async def test_get_slide_via_mcp(tmp_path: Path) -> None:
             {"path": str(pptx_path), "slide_number": 1},
         )
         assert not result.isError
-        text = result.content[0].text
+        text = _get_text(result)
         assert "Slide With Notes" in text
 
 
@@ -303,7 +311,7 @@ async def test_get_slide_out_of_range_via_mcp(tmp_path: Path) -> None:
             {"path": str(pptx_path), "slide_number": 999},
         )
         assert result.isError
-        assert "out of range" in result.content[0].text.lower()
+        assert "out of range" in _get_text(result).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +413,7 @@ async def test_real_docx_via_mcp_pipeline(tmp_path: Path) -> None:
             {"path": str(docx_path)},
         )
         assert not md_result.isError
-        md_text = md_result.content[0].text
+        md_text = _get_text(md_result)
         assert len(md_text) > 100
 
         # Search
@@ -444,7 +452,7 @@ async def test_real_pptx_via_mcp_pipeline(tmp_path: Path) -> None:
             {"path": str(pptx_path), "slide_number": 1},
         )
         assert not slide_result.isError
-        assert "Hello World" in slide_result.content[0].text
+        assert "Hello World" in _get_text(slide_result)
 
         # Parse full presentation
         parse_result = await session.call_tool(

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kaos_content.model.blocks import Heading, Table
 from kaos_content.serializers.markdown import serialize_markdown
 from kaos_content.serializers.text import serialize_text
 
@@ -137,16 +138,18 @@ class TestHeadings:
             '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Title</w:t></w:r></w:p>',
             styles_xml=self.STYLES_XML,
         )
-        assert doc.body[0].node_type == "heading"
-        assert doc.body[0].depth == 1  # type: ignore[attr-defined]
+        heading = doc.body[0]
+        assert isinstance(heading, Heading)
+        assert heading.depth == 1
 
     def test_heading_level2(self):
         doc = _parse_from_body(
             '<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Section</w:t></w:r></w:p>',
             styles_xml=self.STYLES_XML,
         )
-        assert doc.body[0].node_type == "heading"
-        assert doc.body[0].depth == 2  # type: ignore[attr-defined]
+        heading = doc.body[0]
+        assert isinstance(heading, Heading)
+        assert heading.depth == 2
 
     def test_heading_by_inheritance(self):
         doc = _parse_from_body(
@@ -154,8 +157,9 @@ class TestHeadings:
             "<w:r><w:t>Inherited</w:t></w:r></w:p>",
             styles_xml=self.STYLES_XML,
         )
-        assert doc.body[0].node_type == "heading"
-        assert doc.body[0].depth == 2  # type: ignore[attr-defined]
+        heading = doc.body[0]
+        assert isinstance(heading, Heading)
+        assert heading.depth == 2
 
     def test_heading_in_markdown(self):
         doc = _parse_from_body(
@@ -242,10 +246,10 @@ class TestTables:
             "<w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc></w:tr>"
             "</w:tbl>"
         )
-        assert doc.body[0].node_type == "table"
         table = doc.body[0]
-        assert len(table.bodies) == 1  # type: ignore[attr-defined]
-        assert len(table.bodies[0].rows) == 2  # type: ignore[attr-defined]
+        assert isinstance(table, Table)
+        assert len(table.bodies) == 1
+        assert len(table.bodies[0].rows) == 2
 
     def test_table_with_merged_cells(self):
         doc = _parse_from_body(
@@ -257,7 +261,8 @@ class TestTables:
             "</w:tbl>"
         )
         table = doc.body[0]
-        first_row = table.bodies[0].rows[0]  # type: ignore[attr-defined]
+        assert isinstance(table, Table)
+        first_row = table.bodies[0].rows[0]
         assert first_row.cells[0].col_span == 2
 
     def test_table_in_markdown(self):

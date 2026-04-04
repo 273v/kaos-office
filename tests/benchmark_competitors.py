@@ -33,7 +33,9 @@ def check_quality(text: str, fmt: str) -> dict[str, bool | int]:
         "chars": len(text),
         "lines": text.count("\n") + 1,
         "has_bold": "**" in text or "<b>" in text.lower() or "<strong>" in text.lower(),
-        "has_italic": ("*" in text and "**" not in text.replace("**", "")) or "<em>" in text.lower() or "<i>" in text.lower(),
+        "has_italic": ("*" in text and "**" not in text.replace("**", ""))
+        or "<em>" in text.lower()
+        or "<i>" in text.lower(),
         "has_headings": text.startswith("#") or "\n#" in text or "<h1" in text.lower(),
         "has_tables": "|" in text and "---" in text,
         "has_lists": "\n- " in text or "\n* " in text or "\n1. " in text,
@@ -48,12 +50,14 @@ def check_quality(text: str, fmt: str) -> dict[str, bool | int]:
 def extract_kaos(path: Path) -> str:
     """Extract with kaos-office."""
     from kaos_office import extract_to_markdown
+
     return extract_to_markdown(path)
 
 
 def extract_markitdown(path: Path) -> str:
     """Extract with Microsoft MarkItDown."""
     from markitdown import MarkItDown
+
     md = MarkItDown()
     result = md.convert(str(path))
     return result.text_content
@@ -62,7 +66,8 @@ def extract_markitdown(path: Path) -> str:
 def extract_mammoth(path: Path) -> str:
     """Extract DOCX with mammoth (HTML output)."""
     import mammoth
-    with open(path, "rb") as f:
+
+    with path.open("rb") as f:
         result = mammoth.convert_to_markdown(f)
     return result.value
 
@@ -79,7 +84,9 @@ def run_benchmark() -> None:
 
     # --- DOCX ---
     print("\n## DOCX Files\n")
-    print(f"{'File':<45s} {'Library':<15s} {'Chars':>7s} {'Lines':>6s} {'Bold':>5s} {'Ital':>5s} {'Hdrs':>5s} {'Tbls':>5s} {'List':>5s} {'Time':>7s}")
+    print(
+        f"{'File':<45s} {'Library':<15s} {'Chars':>7s} {'Lines':>6s} {'Bold':>5s} {'Ital':>5s} {'Hdrs':>5s} {'Tbls':>5s} {'List':>5s} {'Time':>7s}"
+    )
     print("-" * 100)
 
     for f in DOCX_FILES:
@@ -106,7 +113,9 @@ def run_benchmark() -> None:
 
     # --- PPTX ---
     print("\n## PPTX Files\n")
-    print(f"{'File':<45s} {'Library':<15s} {'Chars':>7s} {'Lines':>6s} {'Bold':>5s} {'Hdrs':>5s} {'Tbls':>5s} {'List':>5s} {'Time':>7s}")
+    print(
+        f"{'File':<45s} {'Library':<15s} {'Chars':>7s} {'Lines':>6s} {'Bold':>5s} {'Hdrs':>5s} {'Tbls':>5s} {'List':>5s} {'Time':>7s}"
+    )
     print("-" * 100)
 
     for f in PPTX_FILES:

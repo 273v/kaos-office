@@ -93,8 +93,9 @@ class TestContentTypeMap:
 
     def test_get_override(self):
         ct = ContentTypeMap.parse(self.CT_XML)
-        assert ct.get("word/document.xml") is not None
-        assert "wordprocessingml" in ct.get("word/document.xml")  # type: ignore[operator]
+        ct_val = ct.get("word/document.xml")
+        assert ct_val is not None
+        assert "wordprocessingml" in ct_val
 
     def test_get_default_by_extension(self):
         ct = ContentTypeMap.parse(self.CT_XML)

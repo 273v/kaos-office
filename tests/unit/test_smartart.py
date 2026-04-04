@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from lxml import etree
+from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import DGM, A
 from kaos_office.pptx.smartart import _extract_texts_from_data_model
