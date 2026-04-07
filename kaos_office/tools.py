@@ -590,6 +590,162 @@ class GetSlideTool(KaosTool):
             )
 
 
+class SearchPptxTool(KaosTool):
+    """Search within a PPTX file."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-search-pptx",
+            display_name="Search PPTX",
+            description=(
+                "Search for content within a PPTX file using BM25 ranking. "
+                "Returns matching text with relevance scores, slide numbers, "
+                "and block references. Use kaos-office-get-slide to read full slide content."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.QUERY,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(
+                    name="path",
+                    type="string",
+                    description="Path to the PPTX file.",
+                ),
+                ParameterSchema(
+                    name="query",
+                    type="string",
+                    description="Search query text.",
+                ),
+                ParameterSchema(
+                    name="top_k",
+                    type="integer",
+                    description="Maximum number of results to return.",
+                    required=False,
+                    default=10,
+                ),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path_str = inputs.get("path", "")
+        query = inputs.get("query", "")
+        top_k = inputs.get("top_k", 10)
+
+        if not query:
+            return ToolResult.create_error(
+                "Query is required. Provide a search term to find in the presentation. "
+                "Example: kaos-office-search-pptx path='slides.pptx' query='revenue growth'"
+            )
+
+        path = _validate_pptx_path(path_str)
+        if path is None:
+            return ToolResult.create_error(
+                f"File not found: {path_str}. Verify the path is correct and the file exists."
+            )
+
+        try:
+            from kaos_content.search import search_document
+
+            from kaos_office.pptx.reader import parse_pptx
+
+            doc = parse_pptx(path)
+            results = search_document(doc, query, top_k=top_k)
+
+            result_data = {
+                "query": results.query,
+                "total_matches": results.total_matches,
+                "has_more": results.has_more,
+                "results": [
+                    {
+                        "text": r.text,
+                        "score": round(r.score, 4),
+                        "block_ref": r.block_ref,
+                        "section_title": r.section_title,
+                    }
+                    for r in results.results
+                ],
+            }
+            more = " (has more)" if results.has_more else ""
+            summary = f"Found {results.total_matches} matches for '{results.query}'{more}"
+            return ToolResult.create_success(output=result_data, summary=summary)
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"Search failed: {exc}. "
+                "Try kaos-office-parse-pptx to verify the presentation has extractable content."
+            )
+
+
+class GetSlideNotesTool(KaosTool):
+    """Extract speaker notes from a specific slide in a PPTX file."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-get-slide-notes",
+            display_name="Get PPTX Slide Notes",
+            description=(
+                "Extract speaker notes from a specific slide in a PPTX file. "
+                "Uses 1-based slide numbering. Use kaos-office-list-slides first "
+                "to see which slides have notes."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.EXTRACT,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(
+                    name="path",
+                    type="string",
+                    description="Path to the PPTX file.",
+                ),
+                ParameterSchema(
+                    name="slide",
+                    type="integer",
+                    description="Slide number (1-based).",
+                    constraints={"minimum": 1},
+                ),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        path_str = inputs.get("path", "")
+        slide_number = inputs.get("slide", 1)
+
+        path = _validate_pptx_path(path_str)
+        if path is None:
+            return ToolResult.create_error(
+                f"File not found: {path_str}. Verify the path is correct and the file exists."
+            )
+
+        try:
+            from kaos_office.pptx.reader import get_slide_notes
+
+            notes = get_slide_notes(path, slide_number)
+            if notes is None:
+                return ToolResult.create_success(
+                    f"Slide {slide_number} has no speaker notes. "
+                    "Use kaos-office-list-slides to see which slides have notes."
+                )
+            return ToolResult.create_success(notes)
+        except ValueError as exc:
+            return ToolResult.create_error(
+                f"{exc}. Use kaos-office-list-slides to see available slide numbers."
+            )
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"Failed to extract slide notes: {exc}. "
+                "Try kaos-office-parse-pptx for full document extraction."
+            )
+
+
 def _validate_xlsx_path(path_str: str) -> Path | None:
     """Validate an XLSX file path exists and return it, or None."""
     p = Path(path_str)
@@ -810,6 +966,8 @@ def register_office_tools(runtime: KaosRuntime) -> int:
         ParsePptxTool(),
         ListSlidesTool(),
         GetSlideTool(),
+        SearchPptxTool(),
+        GetSlideNotesTool(),
         ParseXlsxTool(),
         ListSheetsXlsxTool(),
         GetSheetXlsxTool(),

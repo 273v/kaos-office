@@ -32,7 +32,7 @@
 - OPC layer (`opc/`) is format-agnostic — shared by DOCX, XLSX, PPTX. Built as proper classes to support L1 (read), L2 (write), L3 (round-trip).
 - Security: ZIP bomb detection, path traversal prevention, XML bomb protection via `lxml.etree.XMLParser(resolve_entities=False)`.
 - Follow the KAOS Python QA process: `ruff format`, `ruff check --fix`, `ty check`, `pytest`.
-- 12 MCP tools total (5 DOCX + 3 PPTX + 4 XLSX). Register with `register_office_tools(runtime)`.
+- 14 MCP tools total (5 DOCX + 5 PPTX + 4 XLSX). Register with `register_office_tools(runtime)`.
 - All MCP tools use shared `_OFFICE_ANNOTATIONS` (readOnly, idempotent, !destructive, !openWorld).
 - Tool error messages must include recovery guidance (what went wrong + how to fix it + alternative tool).
 - `search_document()` is imported from kaos-content (canonical, shared with kaos-pdf and kaos-web).

@@ -730,6 +730,33 @@ def get_slide_count(path: str | Path) -> int:
     return len(prs.slides)
 
 
+def get_slide_notes(path: str | Path, slide_number: int) -> str | None:
+    """Extract speaker notes from a specific slide (1-based numbering).
+
+    Returns the notes text, or None if the slide has no notes.
+
+    Raises:
+        ValueError: If slide_number is out of range.
+    """
+    from pptx import Presentation
+
+    prs = Presentation(str(path))
+    if slide_number < 1 or slide_number > len(prs.slides):
+        msg = f"Slide {slide_number} out of range (1-{len(prs.slides)})"
+        raise ValueError(msg)
+
+    slide = prs.slides[slide_number - 1]
+    if not slide.has_notes_slide:
+        return None
+
+    try:
+        notes_tf = slide.notes_slide.notes_text_frame
+        text = notes_tf.text.strip()  # ty: ignore[unresolved-attribute]
+        return text if text else None
+    except Exception:
+        return None
+
+
 def get_slide_text(path: str | Path, slide_number: int) -> str:
     """Extract text from a specific slide (1-based numbering).
 

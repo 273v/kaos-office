@@ -314,6 +314,12 @@ def make_minimal_pptx(
         '<Override PartName="/ppt/slideMasters/slideMaster1.xml" '
         'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
     )
+    if notes_xmls:
+        for i in notes_xmls:
+            overrides.append(
+                f'<Override PartName="/ppt/notesSlides/notesSlide{i + 1}.xml" '
+                f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>'
+            )
 
     content_types = f"""\
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
