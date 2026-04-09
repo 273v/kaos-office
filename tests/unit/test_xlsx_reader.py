@@ -105,9 +105,11 @@ class TestParseXlsx:
         sys.modules.pop("kaos_office.xlsx.calamine_reader", None)
         with mock.patch.dict(sys.modules, {"python_calamine": fake_module}):
             calamine_reader = importlib.import_module("kaos_office.xlsx.calamine_reader")
-            with mock.patch.object(calamine_reader, "CalamineWorkbook", FakeWorkbook):
-                with pytest.raises(ValueError, match="Failed to load 1 sheet"):
-                    parse_xlsx(workbook_path, sheets=["Missing"], engine="calamine")
+            with (
+                mock.patch.object(calamine_reader, "CalamineWorkbook", FakeWorkbook),
+                pytest.raises(ValueError, match="Failed to load 1 sheet"),
+            ):
+                parse_xlsx(workbook_path, sheets=["Missing"], engine="calamine")
 
 
 # ---------------------------------------------------------------------------
