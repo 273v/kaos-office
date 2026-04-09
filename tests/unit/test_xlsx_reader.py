@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import types
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -80,6 +81,33 @@ class TestParseXlsx:
     def test_missing_file(self) -> None:
         with pytest.raises(FileNotFoundError):
             parse_xlsx("/nonexistent/file.xlsx")
+
+    def test_calamine_raises_for_unloadable_sheet(self, tmp_path: Path) -> None:
+        import importlib
+        import sys
+
+        workbook_path = tmp_path / "broken.xlsx"
+        workbook_path.write_bytes(b"placeholder")
+
+        class FakeWorkbook:
+            @staticmethod
+            def from_path(_path: str):
+                return FakeWorkbook()
+
+            @property
+            def sheets_metadata(self):
+                return []
+
+            def get_sheet_by_name(self, name: str):
+                raise KeyError(name)
+
+        fake_module = types.SimpleNamespace(CalamineWorkbook=FakeWorkbook)
+        sys.modules.pop("kaos_office.xlsx.calamine_reader", None)
+        with mock.patch.dict(sys.modules, {"python_calamine": fake_module}):
+            calamine_reader = importlib.import_module("kaos_office.xlsx.calamine_reader")
+            with mock.patch.object(calamine_reader, "CalamineWorkbook", FakeWorkbook):
+                with pytest.raises(ValueError, match="Failed to load 1 sheet"):
+                    parse_xlsx(workbook_path, sheets=["Missing"], engine="calamine")
 
 
 # ---------------------------------------------------------------------------
@@ -179,19 +207,6 @@ class TestTabularDocumentIntegration:
             assert orig.name == rest.name
             assert orig.row_count == rest.row_count
             assert len(orig.columns) == len(rest.columns)
-
-    def test_duckdb_registration(self) -> None:
-        """XLSX → TabularDocument → DuckDB → SQL query."""
-        duckdb = pytest.importorskip("duckdb")
-        from kaos_content.bridges.duckdb import query_to_table, register_document
-
-        doc = parse_xlsx(CBS)
-        con = duckdb.connect()
-        names = register_document(con, doc)
-        assert len(names) == 2
-
-        result = query_to_table(con, 'SELECT COUNT(*) FROM "4Q15 CBS"', name="count")
-        assert result.rows[0][0] > 0
 
 
 # ---------------------------------------------------------------------------

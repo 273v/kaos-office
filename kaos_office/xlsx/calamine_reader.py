@@ -34,6 +34,9 @@ from kaos_content.model.tabular import (
     TabularDocument,
     infer_column_type,
 )
+from kaos_core.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Calamine is required for XLSX reading
 try:
@@ -96,14 +99,22 @@ def parse_xlsx_calamine(
         ]
 
     tables: list[Table] = []
+    failed_sheets: list[str] = []
     for sheet_name in sheet_names:
         try:
             sheet = wb.get_sheet_by_name(sheet_name)
-        except Exception:
-            continue  # Skip sheets that can't be found
+        except Exception as exc:
+            failed_sheets.append(f"{sheet_name}: {exc}")
+            logger.warning("Failed to load XLSX sheet %s from %s: %s", sheet_name, p, exc)
+            continue
 
         table = _sheet_to_table(sheet, header_row=header_row, max_rows=max_rows)
         tables.append(table)
+
+    if failed_sheets:
+        joined = "; ".join(failed_sheets)
+        msg = f"Failed to load {len(failed_sheets)} sheet(s) from {p.name}: {joined}"
+        raise ValueError(msg)
 
     # Extract formulas if requested
     if include_formulas:
