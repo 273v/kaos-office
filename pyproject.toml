@@ -124,7 +124,11 @@ known-first-party = ["kaos_office"]
 
 [tool.ty.src]
 include = ["kaos_office", "tests"]
-exclude = ["tests/benchmark_real_comparison.py"]
+exclude = [
+  "tests/benchmark_comparison.py",
+  "tests/benchmark_competitors.py",
+  "tests/benchmark_real_comparison.py",
+]
 
 [tool.uv]
 package = true

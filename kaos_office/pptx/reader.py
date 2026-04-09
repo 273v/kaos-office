@@ -710,7 +710,9 @@ def _process_notes(slide: Slide, ctx: ParseContext) -> None:
 
     try:
         notes_tf = slide.notes_slide.notes_text_frame
-        text = notes_tf.text.strip()  # ty: ignore[unresolved-attribute]
+        if notes_tf is None:
+            return
+        text = notes_tf.text.strip()
         if text:
             ctx.builder.begin_div(classes="speaker-notes")
             ctx.builder.paragraph(Text(value=text))
@@ -751,7 +753,9 @@ def get_slide_notes(path: str | Path, slide_number: int) -> str | None:
 
     try:
         notes_tf = slide.notes_slide.notes_text_frame
-        text = notes_tf.text.strip()  # ty: ignore[unresolved-attribute]
+        if notes_tf is None:
+            return None
+        text = notes_tf.text.strip()
         return text if text else None
     except Exception:
         return None
