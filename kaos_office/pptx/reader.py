@@ -22,6 +22,7 @@ from kaos_content.model.blocks import Table
 from kaos_content.model.document import ContentDocument
 from kaos_content.model.inlines import Emphasis, Inline, Link, Strong, Text
 from kaos_content.model.table import Cell, Row, TableSection
+from kaos_core.logging import get_logger
 from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import (
@@ -40,6 +41,8 @@ if TYPE_CHECKING:
     from pptx.slide import Slide
     from pptx.table import Table as PptxTable
     from pptx.text.text import _Paragraph
+
+logger = get_logger(__name__)
 
 # Placeholder types to skip (metadata, not content)
 _SKIP_PLACEHOLDER_TYPES = frozenset(
@@ -171,8 +174,8 @@ def _extract_metadata_title(core_xml: bytes | None) -> str | None:
         title_el = root.find(f"{{{DC}}}title")
         if title_el is not None and title_el.text:
             return title_el.text.strip()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to extract metadata title from core.xml: %s", exc)
     return None
 
 
@@ -210,8 +213,8 @@ def _apply_metadata(
 
         if kwargs:
             builder.set_metadata(**kwargs)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to apply document metadata: %s", exc)
 
 
 def _process_slide(slide: Slide, slide_num: int, ctx: ParseContext) -> None:
@@ -602,11 +605,11 @@ def _process_chart(chart: Chart, ctx: ParseContext) -> None:
                 try:
                     for v in ser.values:
                         vals.append(str(v) if v is not None else "")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed to extract chart series values: %s", exc)
                 series_values.append(vals)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to extract chart data: %s", exc)
 
     if not categories and not series_values:
         # No data extracted — add title as paragraph if present
@@ -717,8 +720,8 @@ def _process_notes(slide: Slide, ctx: ParseContext) -> None:
             ctx.builder.begin_div(classes="speaker-notes")
             ctx.builder.paragraph(Text(value=text))
             ctx.builder.end()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to extract speaker notes: %s", exc)
 
 
 # --- Public helpers for MCP tools ---
@@ -757,7 +760,8 @@ def get_slide_notes(path: str | Path, slide_number: int) -> str | None:
             return None
         text = notes_tf.text.strip()
         return text if text else None
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to extract slide notes: %s", exc)
         return None
 
 
