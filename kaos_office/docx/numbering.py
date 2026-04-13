@@ -55,7 +55,7 @@ _ORDERED_FORMATS = frozenset(
 )
 
 
-@dataclass
+@dataclass(frozen=True)
 class NumberingResolver:
     """Resolve numId + ilvl to list type (ordered/bullet).
 

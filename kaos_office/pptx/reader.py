@@ -102,7 +102,7 @@ _ORDERED_AUTONUM_TYPES = frozenset(
 )
 
 
-@dataclass
+@dataclass  # Mutable: list_stack modified during slide parsing
 class ParseContext:
     """Holds state during PPTX parsing."""
 
@@ -113,7 +113,7 @@ class ParseContext:
     list_stack: list[_ListState] = field(default_factory=list)
 
 
-@dataclass
+@dataclass  # Mutable: item_open toggled during list processing
 class _ListState:
     """Tracks an open list level during paragraph processing."""
 

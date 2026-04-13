@@ -103,7 +103,7 @@ logger = get_logger(__name__)
 _EXTRACTOR = "kaos-office/docx"
 
 
-@dataclass
+@dataclass  # Mutable: item_open toggled during list processing
 class ListState:
     """Track open list state for proper begin/end nesting."""
 
@@ -113,7 +113,7 @@ class ListState:
     item_open: bool = False  # Whether a list item is currently open
 
 
-@dataclass
+@dataclass  # Mutable: accumulates state (bookmarks, list_stack) during document parsing
 class ParseContext:
     """Mutable state passed through the parse tree."""
 

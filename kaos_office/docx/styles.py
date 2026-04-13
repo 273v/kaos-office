@@ -17,7 +17,7 @@ _HEADING_NAME_RE = re.compile(r"^heading\s+(\d+)$", re.IGNORECASE)
 _TOC_HEADING_RE = re.compile(r"^toc\s*heading$", re.IGNORECASE)
 
 
-@dataclass
+@dataclass  # Mutable: caches heading lookups in _heading_cache, uses _seen for cycle detection
 class StyleResolver:
     """Resolve paragraph styles to heading levels and detect style properties.
 
