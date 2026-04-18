@@ -117,6 +117,49 @@ class RelationshipManager:
         rels = self._by_type.get(rel_type, [])
         return rels[0].target if rels else None
 
+    # --- L2 Write Methods ---
+
+    def add(
+        self,
+        rel_type: str,
+        target: str,
+        *,
+        rel_id: str | None = None,
+        external: bool = False,
+    ) -> Relationship:
+        """Add a new relationship. Auto-generates ID if not provided."""
+        if rel_id is None:
+            rel_id = self.next_id()
+        rel = Relationship(id=rel_id, type=rel_type, target=target, external=external)
+        self._by_id[rel_id] = rel
+        self._by_type.setdefault(rel_type, []).append(rel)
+        return rel
+
+    def next_id(self) -> str:
+        """Generate the next available rId (rId1, rId2, ...)."""
+        n = 1
+        while f"rId{n}" in self._by_id:
+            n += 1
+        return f"rId{n}"
+
+    def serialize(self) -> bytes:
+        """Serialize to .rels XML bytes."""
+        from lxml import etree  # ty: ignore[unresolved-import]
+
+        root = etree.Element("Relationships", nsmap={None: _RELS_NS})
+
+        for rel in sorted(self._by_id.values(), key=lambda r: r.id):
+            attribs: dict[str, str] = {
+                "Id": rel.id,
+                "Type": rel.type,
+                "Target": rel.target,
+            }
+            if rel.external:
+                attribs["TargetMode"] = "External"
+            etree.SubElement(root, "Relationship", **attribs)
+
+        return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
     def __len__(self) -> int:
         return len(self._by_id)
 

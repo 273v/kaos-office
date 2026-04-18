@@ -233,6 +233,96 @@ class OPCPackage:
             raise OPCPackageError("Package is not open. Use OPCPackage.open() or context manager.")
 
 
+class OPCPackageWriter:
+    """Build a new OPC package from scratch.
+
+    Usage::
+
+        writer = OPCPackageWriter()
+        writer.content_types.add_default("rels", CT_RELS)
+        writer.content_types.add_default("xml", "application/xml")
+        writer.content_types.add_override("/word/document.xml", CT_DOCUMENT)
+
+        writer.root_rels.add(RT_OFFICE_DOCUMENT, "word/document.xml")
+
+        writer.add_part("word/document.xml", document_xml_bytes)
+        writer.add_rels("word/document.xml", doc_rels)
+
+        writer.save("output.docx")
+    """
+
+    def __init__(self) -> None:
+        self._content_types = ContentTypeMap()
+        self._root_rels = RelationshipManager()
+        self._parts: dict[str, bytes] = {}
+        self._rels: dict[str, RelationshipManager] = {}
+
+    @property
+    def content_types(self) -> ContentTypeMap:
+        """The content type map (mutable)."""
+        return self._content_types
+
+    @property
+    def root_rels(self) -> RelationshipManager:
+        """Root-level relationship manager (mutable)."""
+        return self._root_rels
+
+    def add_part(self, part_name: str, data: bytes) -> None:
+        """Add or replace a part in the package."""
+        normalized = part_name.lstrip("/")
+        self._parts[normalized] = data
+
+    def add_xml_part(self, part_name: str, root: etree._Element) -> None:
+        """Add an XML part from an lxml element tree."""
+        data = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+        self.add_part(part_name, data)
+
+    def add_rels(self, source: str, rels: RelationshipManager) -> None:
+        """Set the relationship manager for a source part."""
+        self._rels[source] = rels
+
+    def get_rels(self, source: str) -> RelationshipManager:
+        """Get or create a relationship manager for a source part."""
+        if source not in self._rels:
+            self._rels[source] = RelationshipManager()
+        return self._rels[source]
+
+    def save(self, path: str | Path) -> Path:
+        """Write the package to a ZIP file.
+
+        Returns:
+            The output path.
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = self.save_bytes()
+        path.write_bytes(data)
+        return path
+
+    def save_bytes(self) -> bytes:
+        """Write the package to bytes (in-memory ZIP)."""
+        from io import BytesIO
+
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Content types
+            zf.writestr("[Content_Types].xml", self._content_types.serialize())
+
+            # Root rels
+            zf.writestr("_rels/.rels", self._root_rels.serialize())
+
+            # Parts
+            for name, data in sorted(self._parts.items()):
+                zf.writestr(name, data)
+
+            # Part-level rels
+            for source, mgr in sorted(self._rels.items()):
+                rels_path = _rels_path_for(source)
+                zf.writestr(rels_path, mgr.serialize())
+
+        return buf.getvalue()
+
+
 def _rels_path_for(source: str) -> str:
     """Compute the .rels file path for a given source part.
 

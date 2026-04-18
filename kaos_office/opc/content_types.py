@@ -76,6 +76,32 @@ class ContentTypeMap:
 
         return None
 
+    # --- L2 Write Methods ---
+
+    def add_default(self, extension: str, content_type: str) -> None:
+        """Add an extension-based default content type."""
+        self._defaults[extension.lower().lstrip(".")] = content_type
+
+    def add_override(self, part_name: str, content_type: str) -> None:
+        """Add a part-specific content type override."""
+        normalized = part_name if part_name.startswith("/") else "/" + part_name
+        self._overrides[normalized] = content_type
+
+    def serialize(self) -> bytes:
+        """Serialize to [Content_Types].xml bytes."""
+        from lxml import etree  # ty: ignore[unresolved-import]
+
+        ns = "http://schemas.openxmlformats.org/package/2006/content-types"
+        root = etree.Element(f"{{{ns}}}Types", nsmap={None: ns})
+
+        for ext, ctype in sorted(self._defaults.items()):
+            etree.SubElement(root, "Default", Extension=ext, ContentType=ctype)
+
+        for part_name, ctype in sorted(self._overrides.items()):
+            etree.SubElement(root, "Override", PartName=part_name, ContentType=ctype)
+
+        return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
     @property
     def defaults(self) -> dict[str, str]:
         """Extension → content type defaults (read-only copy)."""
