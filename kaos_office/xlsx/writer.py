@@ -23,7 +23,6 @@ Usage::
 from __future__ import annotations
 
 import datetime
-import json
 import zipfile
 from decimal import Decimal
 from io import BytesIO
@@ -203,9 +202,16 @@ def _is_string_type(value: Any, col_type: Any) -> bool:
 
 
 def _to_string(value: Any) -> str:
-    """Convert a value to its string representation for the SST."""
-    if isinstance(value, (list, dict)):
-        return json.dumps(value, default=str)
+    """Convert a value to its display string for the SST.
+
+    Lists are formatted as semicolon-separated values (not JSON).
+    Dicts are formatted as "key: value" pairs.
+    """
+    if isinstance(value, list):
+        # Semicolon-separated, no brackets — readable in spreadsheets
+        return "; ".join(str(v) for v in value) if value else ""
+    if isinstance(value, dict):
+        return "; ".join(f"{k}: {v}" for k, v in value.items())
     return str(value)
 
 
@@ -351,14 +357,22 @@ def _build_styles() -> bytes:
     etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId=str(_NUMFMT_DECIMAL), fontId="0", fillId="0", borderId="0", xfId="0", applyNumberFormat="1")
     etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId="0", fontId="1", fillId="0", borderId="0", xfId="0", applyFont="1")
 
+    # Cell styles (required for openpyxl compatibility — "Normal" default style)
+    cellStyles = etree.SubElement(root, f"{{{SML}}}cellStyles", count="1")
+    etree.SubElement(cellStyles, f"{{{SML}}}cellStyle", name="Normal", xfId="0", builtinId="0")
+
     return _xml_decl(root)
 
 
 _BOLD_STYLE_IDX = "7"
 
 
+_MIN_COL_WIDTH = 8
+_MAX_COL_WIDTH = 60
+
+
 def _build_worksheet(table: Any, sst: dict[str, int], style_map: dict) -> bytes:
-    """Build xl/worksheets/sheetN.xml — cell data."""
+    """Build xl/worksheets/sheetN.xml — cell data with auto-sized columns."""
 
     root = etree.Element(SML_WORKSHEET, nsmap=_SML_NSMAP)
 
@@ -370,6 +384,30 @@ def _build_worksheet(table: Any, sst: dict[str, int], style_map: dict) -> bytes:
         last_col = index_to_col_letters(n_cols - 1)
         etree.SubElement(root, f"{{{SML}}}dimension", ref=f"A1:{last_col}{n_rows}")
 
+    # Track column widths for auto-sizing
+    col_widths = [len(col.name) + 2 for col in table.columns]
+
+    # Pre-scan data for column widths
+    for row in table.rows:
+        for col_idx in range(min(len(row), n_cols)):
+            value = row[col_idx]
+            if value is None:
+                continue
+            display_len = len(_display_string(value, table.columns[col_idx].column_type))
+            if col_idx < len(col_widths) and display_len > col_widths[col_idx]:
+                col_widths[col_idx] = display_len
+
+    # Write column widths (<cols> element must come before <sheetData>)
+    if col_widths:
+        cols_el = etree.SubElement(root, f"{{{SML}}}cols")
+        for i, width in enumerate(col_widths):
+            clamped = max(_MIN_COL_WIDTH, min(width + 2, _MAX_COL_WIDTH))
+            etree.SubElement(
+                cols_el, f"{{{SML}}}col",
+                min=str(i + 1), max=str(i + 1),
+                width=str(clamped), customWidth="1",
+            )
+
     # Sheet data
     sheet_data = etree.SubElement(root, SML_SHEET_DATA)
 
@@ -380,6 +418,11 @@ def _build_worksheet(table: Any, sst: dict[str, int], style_map: dict) -> bytes:
         c = etree.SubElement(header_row, SML_CELL, r=cell_ref, t="s", s=_BOLD_STYLE_IDX)
         v = etree.SubElement(c, SML_VALUE)
         v.text = str(sst[col.name])
+
+    # Freeze header row
+    sv = etree.SubElement(root, f"{{{SML}}}sheetViews")
+    sheet_view = etree.SubElement(sv, f"{{{SML}}}sheetView", workbookViewId="0", tabSelected="1")
+    etree.SubElement(sheet_view, f"{{{SML}}}pane", ySplit="1", topLeftCell="A2", activePane="bottomLeft", state="frozen")
 
     # Data rows
     for row_idx, row in enumerate(table.rows, start=2):
@@ -406,6 +449,21 @@ def _build_worksheet(table: Any, sst: dict[str, int], style_map: dict) -> bytes:
     return _xml_decl(root)
 
 
+def _display_string(value: Any, col_type: Any) -> str:
+    """Estimate the display width string for a cell value."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "; ".join(str(v) for v in value)
+    if isinstance(value, dict):
+        return str(value)
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return "2025-01-15"  # Fixed width for dates
+    return str(value)
+
+
 def _write_cell_xml(
     row_el: etree._Element,
     cell_ref: str,
@@ -430,13 +488,16 @@ def _write_cell_xml(
         return
 
     # Date/time → serial number with style
-    if col_type in (ColumnType.DATE, ColumnType.DATETIME, ColumnType.TIME) and isinstance(
-        value, (datetime.date, datetime.datetime, datetime.time)
-    ):
-        c = etree.SubElement(row_el, SML_CELL, **attribs)
-        v = etree.SubElement(c, SML_VALUE)
-        v.text = str(date_to_serial(value))
-        return
+    # Coerce ISO date strings to actual dates when column type is DATE
+    if col_type in (ColumnType.DATE, ColumnType.DATETIME, ColumnType.TIME):
+        date_value = value
+        if isinstance(value, str) and col_type == ColumnType.DATE:
+            date_value = _try_parse_date(value)
+        if isinstance(date_value, (datetime.date, datetime.datetime, datetime.time)):
+            c = etree.SubElement(row_el, SML_CELL, **attribs)
+            v = etree.SubElement(c, SML_VALUE)
+            v.text = str(date_to_serial(date_value))
+            return
 
     # Duration → fractional days
     if col_type == ColumnType.DURATION and isinstance(value, datetime.timedelta):
@@ -484,10 +545,31 @@ def _write_cell_xml(
         t_el.text = s
 
 
+def _try_parse_date(s: str) -> datetime.date | str:
+    """Try to parse an ISO date string. Returns original string on failure."""
+    try:
+        return datetime.date.fromisoformat(s)
+    except (ValueError, TypeError):
+        pass
+    # Try common formats
+    for fmt in ("%m/%d/%Y", "%d/%m/%Y", "%B %d, %Y", "%b %d, %Y"):
+        try:
+            return datetime.datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return s
+
+
 def _safe_sheet_name(name: str) -> str:
     """Sanitize a table name for use as an Excel sheet name."""
     if not name:
         return "Sheet1"
+    # Strip version suffixes like "-v2" for cleaner display
+    clean = name
+    if clean.endswith(("-v1", "-v2", "-v3")):
+        clean = clean[:-3]
+    # Replace hyphens with spaces, title case
+    clean = clean.replace("-", " ").replace("_", " ").title()
     for ch in r"[]:*?/\\":
-        name = name.replace(ch, "_")
-    return name[:31]
+        clean = clean.replace(ch, "_")
+    return clean[:31]
