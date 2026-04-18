@@ -215,7 +215,17 @@ def parse_docx(path: str | Path) -> ContentDocument:
             body = doc_xml  # Some documents have body as the root
 
         builder = DocumentBuilder(title=docx_meta.title)
+        # ``set_source`` attaches provenance to blocks; ``set_metadata`` also
+        # populates ``document.metadata.source`` so multi-document corpora
+        # (e.g. ``kaos_content.corpus.ContentDocumentCorpus``,
+        # ``kaos_ml_core.Corpus.from_documents``) thread ``doc_uri`` without
+        # an explicit constructor kwarg. Mirrors ``extract_pdf``
+        # (kaos-pdf/extract.py:285) and ``parse_plain_text``
+        # (kaos-content/parsers/plain.py).
+        from kaos_content.model.attr import SourceRef
+
         builder.set_source(uri=source_uri, mime_type=DOCX_MIME_TYPE)
+        builder.set_metadata(source=SourceRef(uri=source_uri, mime_type=DOCX_MIME_TYPE))
         if docx_meta.creator:
             builder.set_metadata(authors=(docx_meta.creator,))
         if docx_meta.created:
