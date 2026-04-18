@@ -44,12 +44,16 @@ xlsx-calamine = [
 xlsx-formulas = [
     "openpyxl>=3.1",
 ]
+xlsx-write = [
+    "xlsxwriter>=3.2",  # dev/test aid only — production uses native lxml writer
+]
 
 [dependency-groups]
 dev = [
   "kaos-mcp>=0.1.0",
   "kaos-nlp-core>=0.1.0",
   "python-pptx>=1.0",
+  "xlsxwriter>=3.2",
   "pytest>=8.3.5",
   "pytest-asyncio>=0.26.0",
   "pytest-cov>=6.0.0",

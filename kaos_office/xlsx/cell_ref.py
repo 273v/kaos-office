@@ -27,3 +27,13 @@ def col_to_index(letters: str) -> int:
     for ch in letters.upper():
         result = result * 26 + (ord(ch) - ord("A") + 1)
     return result - 1
+
+
+def index_to_col_letters(index: int) -> str:
+    """Convert 0-based column index to Excel letters. 0→'A', 25→'Z', 26→'AA'."""
+    result = []
+    n = index + 1
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        result.append(chr(65 + remainder))
+    return "".join(reversed(result))

@@ -116,3 +116,32 @@ def serial_to_date(
         return dt + datetime.timedelta(seconds=total_seconds)
 
     return dt.date()
+
+
+def date_to_serial(
+    value: datetime.date | datetime.datetime | datetime.time,
+    *,
+    date1904: bool = False,
+) -> float:
+    """Convert Python date/datetime/time to Excel serial number.
+
+    Inverse of ``serial_to_date``. Handles the 1900 leap year bug.
+    """
+    epoch = _EPOCH_1904 if date1904 else _EPOCH_1900
+
+    if isinstance(value, datetime.time):
+        return (value.hour * 3600 + value.minute * 60 + value.second) / 86400
+
+    if isinstance(value, datetime.datetime):
+        dt = value
+    else:
+        dt = datetime.datetime.combine(value, datetime.time())
+
+    delta = dt - epoch
+    serial = float(delta.days) + delta.seconds / 86400
+
+    # Excel 1900 leap year bug: add 1 for serial >= 60
+    if not date1904 and serial >= 60:
+        serial += 1
+
+    return serial
