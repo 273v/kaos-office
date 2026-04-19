@@ -21,8 +21,19 @@ from kaos_core.logging import get_logger
 from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import (
+    CT_FOOTER,
+    CT_HEADER,
+    R_ID_ATTR,
+    RT_FOOTER,
+    RT_HEADER,
     W_BODY,
+    W_FOOTER_REFERENCE,
+    W_FTR,
+    W_HDR,
+    W_HEADER_REFERENCE,
     W_P,
+    W_PGMAR,
+    W_PGSZ,
     W_PPR,
     W_PSTYLE,
     W_R,
@@ -31,8 +42,10 @@ from kaos_office.ooxml.namespace import (
     W_TBL,
     W_TC,
     W_TR,
+    W_TYPE,
     R,
     W,
+    pt_to_twips,
     qn,
 )
 from kaos_office.opc.package import OPCPackageWriter
@@ -126,6 +139,12 @@ def write_docx_bytes(doc: Any) -> bytes:
     # Build document.xml
     ctx = _WriteContext(doc_rels=doc_rels)
     _prepare_notes(doc, ctx)
+
+    # Headers & footers (Phase 4) — parts are written before document.xml so
+    # relationship IDs resolve at body-end serialization. The context's
+    # header/footer_refs are consulted when building <w:sectPr>.
+    _write_header_footer_parts(doc, ctx, writer)
+
     document_xml = _build_document(doc, ctx)
     writer.add_xml_part("word/document.xml", document_xml)
 
@@ -171,10 +190,12 @@ class _WriteContext:
         "comments",
         "doc_rels",
         "endnotes",
+        "footer_refs",
         "footnotes",
         "has_endnotes",
         "has_footnotes",
         "has_lists",
+        "header_refs",
         "hyperlink_urls",
         "list_counter",
     )
@@ -192,6 +213,50 @@ class _WriteContext:
         self.endnotes: dict[str, tuple[Any, ...]] = {}
         # Phase C: comments — list of (comment_id, metadata_dict)
         self.comments: list[tuple[int, dict[str, Any]]] = []
+        # Phase 4: list of (kind, rel_id) per ref type for sectPr emission.
+        self.header_refs: list[tuple[str, str]] = []
+        self.footer_refs: list[tuple[str, str]] = []
+
+
+def _write_header_footer_parts(doc: Any, ctx: _WriteContext, writer: OPCPackageWriter) -> None:
+    """Write word/header*.xml and word/footer*.xml parts for each entry in
+    ``doc.headers`` / ``doc.footers``. Records ``(kind, rel_id)`` in the
+    write context so ``_build_document`` can emit the corresponding
+    ``<w:headerReference>`` / ``<w:footerReference>`` in ``<w:sectPr>``.
+    """
+    headers = getattr(doc, "headers", {}) or {}
+    footers = getattr(doc, "footers", {}) or {}
+    if not headers and not footers:
+        return
+
+    for idx, (kind, blocks) in enumerate(headers.items(), start=1):
+        part_name = f"header{idx}.xml"
+        full_path = f"word/{part_name}"
+        writer.content_types.add_override(f"/{full_path}", CT_HEADER)
+        rel_id = ctx.doc_rels.add(RT_HEADER, part_name).id
+        ctx.header_refs.append((kind, rel_id))
+        writer.add_xml_part(full_path, _build_header_footer_part("hdr", blocks, ctx))
+
+    for idx, (kind, blocks) in enumerate(footers.items(), start=1):
+        part_name = f"footer{idx}.xml"
+        full_path = f"word/{part_name}"
+        writer.content_types.add_override(f"/{full_path}", CT_FOOTER)
+        rel_id = ctx.doc_rels.add(RT_FOOTER, part_name).id
+        ctx.footer_refs.append((kind, rel_id))
+        writer.add_xml_part(full_path, _build_header_footer_part("ftr", blocks, ctx))
+
+
+def _build_header_footer_part(kind: str, blocks: tuple, ctx: _WriteContext) -> etree._Element:
+    """Build a ``<w:hdr>`` or ``<w:ftr>`` root containing the supplied blocks."""
+    tag = W_HDR if kind == "hdr" else W_FTR
+    root = etree.Element(tag, nsmap=_W_NSMAP)
+    if not blocks:
+        # w:hdr / w:ftr must contain at least one paragraph to open cleanly.
+        etree.SubElement(root, W_P)
+        return root
+    for block in blocks:
+        _serialize_block(root, block, ctx)
+    return root
 
 
 def _build_document(doc: Any, ctx: _WriteContext) -> etree._Element:
@@ -202,17 +267,44 @@ def _build_document(doc: Any, ctx: _WriteContext) -> etree._Element:
     for block in doc.body:
         _serialize_block(body, block, ctx)
 
-    # Default section properties (Letter, 1" margins)
     sect_pr = etree.SubElement(body, qn(W, "sectPr"))
-    etree.SubElement(sect_pr, qn(W, "pgSz"), **{qn(W, "w"): "12240", qn(W, "h"): "15840"})
+
+    # Header / footer references must precede pgSz / pgMar in sectPr.
+    for kind, rid in ctx.header_refs:
+        etree.SubElement(sect_pr, W_HEADER_REFERENCE, **{W_TYPE: kind, R_ID_ATTR: rid})
+    for kind, rid in ctx.footer_refs:
+        etree.SubElement(sect_pr, W_FOOTER_REFERENCE, **{W_TYPE: kind, R_ID_ATTR: rid})
+
+    # Page setup: prefer doc.metadata.page_setup values; fall back to
+    # US Letter with 1 inch margins so the output still opens in Word
+    # when the source didn't carry any geometry.
+    ps = getattr(getattr(doc, "metadata", None), "page_setup", None)
+
+    def _twips(value: float | None, default_twips: int) -> str:
+        if value is None:
+            return str(default_twips)
+        return str(pt_to_twips(value))
+
+    pg_width = _twips(getattr(ps, "page_width_pt", None) if ps else None, 12240)
+    pg_height = _twips(getattr(ps, "page_height_pt", None) if ps else None, 15840)
+    margin_top = _twips(getattr(ps, "margin_top_pt", None) if ps else None, 1440)
+    margin_right = _twips(getattr(ps, "margin_right_pt", None) if ps else None, 1440)
+    margin_bottom = _twips(getattr(ps, "margin_bottom_pt", None) if ps else None, 1440)
+    margin_left = _twips(getattr(ps, "margin_left_pt", None) if ps else None, 1440)
+    margin_header = _twips(getattr(ps, "header_distance_pt", None) if ps else None, 720)
+    margin_footer = _twips(getattr(ps, "footer_distance_pt", None) if ps else None, 720)
+
+    etree.SubElement(sect_pr, W_PGSZ, **{qn(W, "w"): pg_width, qn(W, "h"): pg_height})
     etree.SubElement(
         sect_pr,
-        qn(W, "pgMar"),
+        W_PGMAR,
         **{
-            qn(W, "top"): "1440",
-            qn(W, "right"): "1440",
-            qn(W, "bottom"): "1440",
-            qn(W, "left"): "1440",
+            qn(W, "top"): margin_top,
+            qn(W, "right"): margin_right,
+            qn(W, "bottom"): margin_bottom,
+            qn(W, "left"): margin_left,
+            qn(W, "header"): margin_header,
+            qn(W, "footer"): margin_footer,
         },
     )
 

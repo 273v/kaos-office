@@ -127,6 +127,35 @@ W_AUTHOR = qn(W, "author")
 W_DATE = qn(W, "date")
 W_ANCHOR = qn(W, "anchor")
 
+# Header / footer / section-properties elements (Phase 4)
+W_HDR = qn(W, "hdr")
+W_FTR = qn(W, "ftr")
+W_HEADER_REFERENCE = qn(W, "headerReference")
+W_FOOTER_REFERENCE = qn(W, "footerReference")
+W_PGSZ = qn(W, "pgSz")
+W_PGMAR = qn(W, "pgMar")
+W_TITLEPG = qn(W, "titlePg")
+R_ID_ATTR = qn(R, "id")
+
+# Content types for header / footer parts (relationship types RT_HEADER /
+# RT_FOOTER are already defined below in the relationships section).
+CT_HEADER = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
+CT_FOOTER = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
+
+# Twip conversion (1 twip = 1/20 point = 1/1440 inch)
+TWIPS_PER_POINT = 20
+
+
+def twips_to_pt(twips: int | float) -> float:
+    """Convert OOXML twips (1/20 pt) to typographic points."""
+    return float(twips) / TWIPS_PER_POINT
+
+
+def pt_to_twips(points: int | float) -> int:
+    """Convert typographic points to OOXML twips, rounded to int."""
+    return round(float(points) * TWIPS_PER_POINT)
+
+
 # --- Pre-computed PresentationML tags ---
 P_SLD = qn(P, "sld")
 P_CSLD = qn(P, "cSld")

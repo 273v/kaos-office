@@ -33,6 +33,7 @@ from kaos_content.model.inlines import (
     Text,
     Underline,
 )
+from kaos_content.model.metadata import PageSetup
 from kaos_content.model.table import Cell, Row, TableSection
 from kaos_core.logging import get_logger
 from lxml import etree  # ty: ignore[unresolved-import]
@@ -44,9 +45,12 @@ from kaos_office.ooxml.namespace import (
     DOCX_MIME_TYPE,
     R_EMBED,
     R_ID,
+    R_ID_ATTR,
     RT_COMMENTS,
     RT_ENDNOTES,
+    RT_FOOTER,
     RT_FOOTNOTES,
+    RT_HEADER,
     RT_OFFICE_DOCUMENT,
     W_ANCHOR,
     W_B,
@@ -60,11 +64,13 @@ from kaos_office.ooxml.namespace import (
     W_ENDNOTE,
     W_ENDNOTE_REFERENCE,
     W_ENDNOTES,
+    W_FOOTER_REFERENCE,
     W_FOOTNOTE,
     W_FOOTNOTE_REFERENCE,
     W_FOOTNOTES,
     W_GRIDCOL,
     W_GRIDSPAN,
+    W_HEADER_REFERENCE,
     W_HYPERLINK,
     W_I,
     W_ID,
@@ -75,6 +81,8 @@ from kaos_office.ooxml.namespace import (
     W_NUMID,
     W_NUMPR,
     W_P,
+    W_PGMAR,
+    W_PGSZ,
     W_PPR,
     W_PSTYLE,
     W_R,
@@ -100,6 +108,7 @@ from kaos_office.ooxml.namespace import (
     W,
     emu_to_pt,
     qn,
+    twips_to_pt,
 )
 from kaos_office.opc.package import OPCPackage
 
@@ -273,6 +282,18 @@ def parse_docx(path: str | Path, *, track_changes: bool = False) -> ContentDocum
 
         # Add comment annotations
         _add_comment_annotations(ctx)
+
+        # Headers, footers, and page setup (Phase 4) — parsed here after
+        # the main body walk so shared state (styles, rels) is available
+        # and nothing in the body loop needs to know about them.
+        headers, footers = _parse_headers_and_footers(doc_rels, pkg, doc_dir, body, ctx)
+        for kind, blocks in headers.items():
+            builder.set_header(kind, *blocks)
+        for kind, blocks in footers.items():
+            builder.set_footer(kind, *blocks)
+        page_setup = _parse_page_setup(body)
+        if page_setup is not None:
+            builder.set_metadata(page_setup=page_setup)
 
         return builder.build()
 
@@ -893,6 +914,146 @@ def _extract_image(drawing_el: etree._Element, ctx: ParseContext) -> Image | Non
         width=width_pt,
         height=height_pt,
     )
+
+
+# --------------------------------------------------------------------------
+# Headers, footers, and page setup (Phase 4)
+# --------------------------------------------------------------------------
+
+
+def _parse_header_footer_part(
+    root: etree._Element,
+    parent_ctx: ParseContext,
+) -> tuple:
+    """Walk a ``<w:hdr>`` or ``<w:ftr>`` root and return a tuple of Blocks.
+
+    Uses a fresh :class:`DocumentBuilder` so the header/footer content
+    doesn't pollute the main body. Shares styles / numbering / rels with
+    the parent context — for an MVP this means header images resolve via
+    the document's rels_map, which covers the common case (logos in
+    headers) but not per-part rels files.
+    """
+    sub_builder = DocumentBuilder()
+    sub_ctx = ParseContext(
+        builder=sub_builder,
+        styles=parent_ctx.styles,
+        numbering=parent_ctx.numbering,
+        rels=parent_ctx.rels,
+        rels_external=parent_ctx.rels_external,
+        source_uri=parent_ctx.source_uri,
+    )
+    for child in root:
+        _process_body_child(child, sub_ctx)
+    _flush_open_lists(sub_ctx)
+    return sub_builder.build().body
+
+
+def _parse_headers_and_footers(
+    doc_rels: object,
+    pkg: OPCPackage,
+    doc_dir: str,
+    body_el: etree._Element,
+    parent_ctx: ParseContext,
+) -> tuple[dict[str, tuple], dict[str, tuple]]:
+    """Parse all referenced header and footer parts.
+
+    Walks every ``<w:sectPr>`` in the body, collects
+    ``<w:headerReference r:id=... w:type=.../>`` and
+    ``<w:footerReference ...>`` entries, and parses each referenced part
+    once. The ``w:type`` attribute (``default`` / ``first`` / ``even``)
+    becomes the dict key.
+    """
+    from kaos_office.opc.relationships import RelationshipManager
+
+    assert isinstance(doc_rels, RelationshipManager)
+
+    headers: dict[str, tuple] = {}
+    footers: dict[str, tuple] = {}
+
+    # Track which rIds we've already processed so the same header.xml
+    # referenced by multiple sections doesn't parse twice.
+    seen: set[str] = set()
+
+    for ref_tag, bucket, _rel_type in (
+        (W_HEADER_REFERENCE, headers, RT_HEADER),
+        (W_FOOTER_REFERENCE, footers, RT_FOOTER),
+    ):
+        for ref in body_el.iter(ref_tag):
+            rid = ref.get(R_ID_ATTR)
+            if rid is None or rid in seen:
+                continue
+            seen.add(rid)
+            ref_type = ref.get(W_TYPE) or "default"
+            target = parent_ctx.rels.get(rid)
+            if target is None:
+                continue
+            # target is already resolved relative to doc_dir in rels_map
+            if not pkg.has_part(target):
+                continue
+            try:
+                root = pkg.read_xml(target)
+            except Exception:  # malformed XML part
+                logger.debug("Failed to read header/footer part %s", target, exc_info=True)
+                continue
+            blocks = _parse_header_footer_part(root, parent_ctx)
+            if blocks:
+                bucket[ref_type] = blocks
+    return headers, footers
+
+
+def _parse_page_setup(body_el: etree._Element) -> PageSetup | None:
+    """Extract page size / margins from the body's final ``<w:sectPr>``.
+
+    OOXML allows multiple ``<w:sectPr>`` (one per section); the final one
+    at body end carries the document-level defaults. Returns a
+    :class:`~kaos_content.model.metadata.PageSetup` or ``None`` if no
+    section properties are present.
+    """
+    sect_prs = list(body_el.iter(W_SECTPR))
+    if not sect_prs:
+        return None
+    sect = sect_prs[-1]
+
+    def _twips(attr: etree._Element | None, name: str) -> float | None:
+        if attr is None:
+            return None
+        val = attr.get(qn(W, name))
+        if val is None:
+            return None
+        try:
+            return twips_to_pt(int(val))
+        except ValueError:
+            return None
+
+    pg_sz = sect.find(W_PGSZ)
+    pg_mar = sect.find(W_PGMAR)
+
+    setup = PageSetup(
+        page_width_pt=_twips(pg_sz, "w"),
+        page_height_pt=_twips(pg_sz, "h"),
+        margin_top_pt=_twips(pg_mar, "top"),
+        margin_bottom_pt=_twips(pg_mar, "bottom"),
+        margin_left_pt=_twips(pg_mar, "left"),
+        margin_right_pt=_twips(pg_mar, "right"),
+        header_distance_pt=_twips(pg_mar, "header"),
+        footer_distance_pt=_twips(pg_mar, "footer"),
+    )
+    # Return None if every field is None (nothing worth preserving)
+    if all(
+        v is None
+        for v in (
+            setup.page_width_pt,
+            setup.page_height_pt,
+            setup.margin_top_pt,
+            setup.margin_bottom_pt,
+            setup.margin_left_pt,
+            setup.margin_right_pt,
+            setup.header_distance_pt,
+            setup.footer_distance_pt,
+        )
+    ):
+        return None
+    return setup
 
 
 # --------------------------------------------------------------------------
