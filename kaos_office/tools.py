@@ -17,12 +17,22 @@ from kaos_core.types.parameters import ParameterSchema
 _MODULE = "kaos-office"
 _VERSION = "0.1.0"
 
-# All Office tools are read-only, idempotent, and local-only.
+# All Office read tools are read-only, idempotent, and local-only.
 _OFFICE_ANNOTATIONS = ToolAnnotations(
     readOnlyHint=True,
     destructiveHint=False,
     idempotentHint=True,
     openWorldHint=False,
+)
+
+# Write tools produce new files and register artifacts. Not idempotent — same
+# input yields a new artifact id each call. `destructiveHint=False` because we
+# refuse silent overwrites; callers must opt in via `force=True`.
+_OFFICE_WRITE_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=False,
+    idempotentHint=False,
+    openWorldHint=True,
 )
 
 
@@ -955,6 +965,305 @@ class XlsxMetadataTool(KaosTool):
             return ToolResult.create_error(f"Failed to read XLSX metadata: {exc}.")
 
 
+# ---------------------------------------------------------------------------
+# Writer tools — ContentDocument / TabularDocument -> DOCX / PPTX / XLSX
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_content_document(
+    inputs: dict[str, Any], context: KaosContext | None
+) -> tuple[Any | None, str | None]:
+    """Resolve a ContentDocument from inline JSON or an artifact id.
+
+    Returns ``(doc, None)`` on success or ``(None, error_message)`` on failure.
+    """
+    from kaos_content.model.document import ContentDocument
+
+    inline_raw = inputs.get("document_json")
+    artifact_id = inputs.get("document_id")
+
+    if not inline_raw and not artifact_id:
+        return None, (
+            "Missing document: provide either `document_json` (inline JSON) or "
+            "`document_id` (an artifact id from kaos-office-parse-docx / parse-pptx)."
+        )
+
+    if artifact_id:
+        if context is None or context.runtime is None:
+            return None, "`document_id` requires a KaosRuntime; pass `document_json` instead."
+        from kaos_content.artifacts import load_document
+
+        try:
+            return await load_document(artifact_id, context.runtime), None
+        except Exception as exc:  # artifact missing, JSON corrupt, wrong type
+            return None, f"Failed to load document artifact {artifact_id!r}: {exc}."
+
+    if not isinstance(inline_raw, str | bytes | bytearray):
+        return None, "`document_json` must be a JSON string."
+    try:
+        return ContentDocument.model_validate_json(inline_raw), None
+    except Exception as exc:
+        return None, (
+            f"`document_json` is not a valid ContentDocument: {exc}. "
+            "Use the JSON body from kaos-office-parse-docx or kaos-office-parse-pptx."
+        )
+
+
+async def _resolve_tabular_document(
+    inputs: dict[str, Any], context: KaosContext | None
+) -> tuple[Any | None, str | None]:
+    """Resolve a TabularDocument from inline JSON or an artifact id."""
+    from kaos_content.model.tabular import TabularDocument
+
+    inline_raw = inputs.get("document_json")
+    artifact_id = inputs.get("document_id")
+
+    if not inline_raw and not artifact_id:
+        return None, (
+            "Missing document: provide either `document_json` (inline JSON) or "
+            "`document_id` (artifact id from kaos-office-parse-xlsx)."
+        )
+
+    if artifact_id:
+        if context is None or context.runtime is None:
+            return None, "`document_id` requires a KaosRuntime; pass `document_json` instead."
+        from kaos_content.artifacts import load_tabular
+
+        try:
+            return await load_tabular(artifact_id, context.runtime), None
+        except Exception as exc:
+            return None, f"Failed to load tabular artifact {artifact_id!r}: {exc}."
+
+    if not isinstance(inline_raw, str | bytes | bytearray):
+        return None, "`document_json` must be a JSON string."
+    try:
+        return TabularDocument.model_validate_json(inline_raw), None
+    except Exception as exc:
+        return None, (
+            f"`document_json` is not a valid TabularDocument: {exc}. "
+            "Use the JSON body from kaos-office-parse-xlsx."
+        )
+
+
+def _check_output_path(output_path: str, force: bool) -> tuple[Path | None, str | None]:
+    """Validate an output path. Refuses to overwrite unless ``force`` is set."""
+    p = Path(output_path)
+    if p.exists() and not force:
+        return None, (
+            f"Refusing to overwrite existing file: {p}. "
+            "Pass `force=true` to overwrite, or choose a different `output_path`."
+        )
+    return p, None
+
+
+_WRITER_INPUT_SCHEMA_COMMON: list[ParameterSchema] = [
+    ParameterSchema(
+        name="output_path",
+        type="string",
+        description="Filesystem path where the output file will be written.",
+    ),
+    ParameterSchema(
+        name="document_json",
+        type="string",
+        description="Full JSON body of the document (inline).",
+        required=False,
+    ),
+    ParameterSchema(
+        name="document_id",
+        type="string",
+        description="Artifact id produced by a parse tool. Loaded from VFS.",
+        required=False,
+    ),
+    ParameterSchema(
+        name="force",
+        type="boolean",
+        description="Overwrite output_path if it already exists.",
+        required=False,
+        default=False,
+    ),
+]
+
+
+def _write_success_result(
+    written_path: Path,
+    format_name: str,
+    extra_structured: dict[str, Any] | None = None,
+) -> ToolResult:
+    size = written_path.stat().st_size
+    structured: dict[str, Any] = {
+        "path": str(written_path),
+        "format": format_name,
+        "size_bytes": size,
+    }
+    if extra_structured:
+        structured.update(extra_structured)
+    summary = f"Wrote {size} bytes to {written_path} ({format_name})."
+    return ToolResult.create_success(output=structured, summary=summary)
+
+
+class WriteDocxTool(KaosTool):
+    """Write a ContentDocument to a DOCX file."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-write-docx",
+            display_name="Write DOCX",
+            description=(
+                "Serialize a ContentDocument (inline JSON or artifact id) to a DOCX file. "
+                "Call kaos-office-parse-docx on an existing file to obtain a starting JSON body."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.TRANSFORM,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_WRITE_ANNOTATIONS,
+            input_schema=_WRITER_INPUT_SCHEMA_COMMON,
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        doc, err = await _resolve_content_document(inputs, context)
+        if err is not None or doc is None:
+            return ToolResult.create_error(err or "Failed to resolve ContentDocument.")
+        out, err = _check_output_path(inputs.get("output_path", ""), bool(inputs.get("force")))
+        if err is not None or out is None:
+            return ToolResult.create_error(err or "Missing output_path.")
+
+        try:
+            from kaos_office.docx.writer import write_docx
+
+            write_docx(doc, out)
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"DOCX write failed: {exc}. "
+                "Verify the ContentDocument has a `body` and a writable `output_path`."
+            )
+
+        return _write_success_result(
+            out,
+            "docx",
+            {"block_count": len(doc.body)},
+        )
+
+
+class WritePptxTool(KaosTool):
+    """Write a ContentDocument to a PPTX file."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        schema = list(_WRITER_INPUT_SCHEMA_COMMON)
+        schema.append(
+            ParameterSchema(
+                name="template_path",
+                type="string",
+                description="Optional path to a .pptx file to use as a template.",
+                required=False,
+            )
+        )
+        return ToolMetadata(
+            name="kaos-office-write-pptx",
+            display_name="Write PPTX",
+            description=(
+                "Serialize a ContentDocument (inline JSON or artifact id) to a PPTX file. "
+                "Each `Heading(depth=1)` starts a new slide; tables get their own slide. "
+                "Use an optional `template_path` to apply a branded theme."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.TRANSFORM,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_WRITE_ANNOTATIONS,
+            input_schema=schema,
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        doc, err = await _resolve_content_document(inputs, context)
+        if err is not None or doc is None:
+            return ToolResult.create_error(err or "Failed to resolve ContentDocument.")
+        out, err = _check_output_path(inputs.get("output_path", ""), bool(inputs.get("force")))
+        if err is not None or out is None:
+            return ToolResult.create_error(err or "Missing output_path.")
+
+        template_path = inputs.get("template_path") or None
+        if template_path is not None and not Path(template_path).exists():
+            return ToolResult.create_error(
+                f"Template not found: {template_path}. "
+                "Omit `template_path` to use the default blank deck."
+            )
+
+        try:
+            from kaos_office.pptx.writer import write_pptx
+
+            write_pptx(doc, out, template=template_path)
+        except ImportError:
+            return ToolResult.create_error(
+                "PPTX writing requires python-pptx. pip install kaos-office[pptx]"
+            )
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"PPTX write failed: {exc}. "
+                "Verify the ContentDocument has a `body` and any `template_path` is valid."
+            )
+
+        return _write_success_result(
+            out,
+            "pptx",
+            {"block_count": len(doc.body), "template_path": template_path},
+        )
+
+
+class WriteXlsxTool(KaosTool):
+    """Write a TabularDocument to an XLSX file."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-write-xlsx",
+            display_name="Write XLSX",
+            description=(
+                "Serialize a TabularDocument (inline JSON or artifact id) to an XLSX file. "
+                "Each `Table` becomes a worksheet. Call kaos-office-parse-xlsx to obtain "
+                "a starting JSON body."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.TRANSFORM,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_WRITE_ANNOTATIONS,
+            input_schema=_WRITER_INPUT_SCHEMA_COMMON,
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        doc, err = await _resolve_tabular_document(inputs, context)
+        if err is not None or doc is None:
+            return ToolResult.create_error(err or "Failed to resolve TabularDocument.")
+        out, err = _check_output_path(inputs.get("output_path", ""), bool(inputs.get("force")))
+        if err is not None or out is None:
+            return ToolResult.create_error(err or "Missing output_path.")
+
+        try:
+            from kaos_office.xlsx.writer import write_xlsx
+
+            write_xlsx(doc, out)
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"XLSX write failed: {exc}. "
+                "Verify the TabularDocument has `tables` and a writable `output_path`."
+            )
+
+        return _write_success_result(
+            out,
+            "xlsx",
+            {"table_count": len(doc.tables)},
+        )
+
+
 def register_office_tools(runtime: KaosRuntime) -> int:
     """Register all Office MCP tools with a runtime."""
     tools: list[KaosTool] = [
@@ -972,6 +1281,9 @@ def register_office_tools(runtime: KaosRuntime) -> int:
         ListSheetsXlsxTool(),
         GetSheetXlsxTool(),
         XlsxMetadataTool(),
+        WriteDocxTool(),
+        WritePptxTool(),
+        WriteXlsxTool(),
     ]
     for tool in tools:
         runtime.tools.register_tool(tool)
