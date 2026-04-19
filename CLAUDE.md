@@ -55,7 +55,7 @@ Rust-adjacent:
 - ISO date string coercion to serial numbers via `date_to_serial()`.
 - Lists serialized as semicolon-separated strings (not JSON).
 
-## PPTX Generation (Phase 1 — complete)
+## PPTX Generation (Phase 1 + 2 — complete)
 - Uses **python-pptx** (MIT, already `[pptx]` extra) — handles OPC packaging, themes, layouts.
 - Entry points: `write_pptx(doc, path, template=None)` and `write_pptx_bytes(doc)` in `kaos_office.pptx.writer`.
 - Auto-segmentation: each `Heading(depth=1)` starts a new slide; tables get their own slide.
@@ -64,7 +64,7 @@ Rust-adjacent:
 - Inline formatting: Strong (bold), Emphasis (italic), Code (Consolas), Link (hyperlink.address).
 - Template support: optional custom `.pptx` template for branded output.
 - **Bug note**: `SlidePlaceholders.__contains__` returns False for valid indices; use try/except not `in`.
-- **Phase 2 pending**: formatting propagation, speaker notes write-back, image sizing.
+- **Phase 2 complete**: image blocks (Figure → `add_picture` with alt text), table cell merging (`col_span` → `gridSpan`/`hMerge`, `row_span` → `rowSpan`/`vMerge`), speaker notes with structured content (not just flat text). Speaker-notes / explicit-slide Div detection reads classes from `block.attr.classes`, not the block directly (fixed a pre-existing bug).
 
 ## PPTX Extraction (Phase 3 — complete)
 - Uses **python-pptx** (MIT, v1.0.2) for high-level shape traversal + OPC/lxml fallback for SmartArt.
