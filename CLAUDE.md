@@ -32,7 +32,7 @@ Rust-adjacent:
 - List state tracking maintains a stack of open lists for proper begin/end nesting.
 - Track changes: accept insertions (include `w:ins` content), skip deletions (`w:del`), ignore formatting changes.
 
-## DOCX Generation (Phase 2 — complete, Phase 3-5 pending)
+## DOCX Generation (Phase 2 + 3 — complete, Phase 4-5 pending)
 - Uses **lxml** for XML serialization — no python-docx dependency. Consistent with the read path.
 - Entry points: `write_docx(doc, path)` and `write_docx_bytes(doc)` in `kaos_office.docx.writer`.
 - AST walker serializes all kaos-content block types: Paragraph, Heading (1-6 with outlineLvl), BulletList/OrderedList (with numbering.xml), Table (header rows, col_span, grid), CodeBlock (Consolas monospace), BlockQuote, ThematicBreak, PageBreak.
@@ -41,9 +41,9 @@ Rust-adjacent:
 - Generates styles.xml (Heading 1-6, Normal, Code, TableGrid), numbering.xml (bullet + decimal definitions, 9 levels), docProps/core.xml (Dublin Core metadata).
 - kaos-content model uses `.value` for Text/Code/CodeBlock, `.content` for Cell (not `.children`). The writer handles both via getattr fallback.
 - `xml:space="preserve"` uses the XML namespace (`http://www.w3.org/XML/1998/namespace`), NOT the `R` namespace. `xsi:type` on dcterms elements uses `http://www.w3.org/2001/XMLSchema-instance`.
-- **Phase 3 pending**: footnotes, endnotes, comments, images, proper hyperlink relationships.
-- **Phase 4 pending**: headers, footers, sections, page setup.
-- **Phase 5 pending**: round-trip fidelity, MCP tools, CLI integration.
+- **Phase 3 complete**: proper hyperlink relationships (`w:hyperlink` + rId with deduped URLs), footnote/endnote write-back (`word/footnotes.xml` / `word/endnotes.xml` with required separator+continuation IDs, `w:footnoteReference` / `w:endnoteReference` runs), comment write-back (`word/comments.xml` with author/date/text, content type and rel entries added automatically).
+- **Phase 4 pending**: headers, footers, sections, page setup, images.
+- **Phase 5 pending**: MCP tools, CLI integration.
 - **Known gap vs. kelvin-office**: kelvin-office has 18 DOCX test fixtures and tests modification round-trips (load → edit → save → reload → verify edit). We have 6 fixtures and only test identity round-trips.
 
 ## XLSX Generation (complete)
