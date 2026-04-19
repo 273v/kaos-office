@@ -10,7 +10,7 @@ from __future__ import annotations
 from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import A_T, DGM_PT, DGM_PT_LST, DGM_REL_IDS, R, qn
-from kaos_office.opc.package import OPCPackage
+from kaos_office.opc.package import OPCPackage, OPCPackageError
 from kaos_office.opc.relationships import RelationshipManager
 
 
@@ -66,7 +66,7 @@ def extract_smartart_texts(
 
     try:
         data_xml = pkg.read_xml(dm_part)
-    except Exception:
+    except OPCPackageError:
         return []
 
     return _extract_texts_from_data_model(data_xml)
