@@ -31,6 +31,17 @@
 - ISO date string coercion to serial numbers via `date_to_serial()`.
 - Lists serialized as semicolon-separated strings (not JSON).
 
+## PPTX Generation (Phase 1 — complete)
+- Uses **python-pptx** (MIT, already `[pptx]` extra) — handles OPC packaging, themes, layouts.
+- Entry points: `write_pptx(doc, path, template=None)` and `write_pptx_bytes(doc)` in `kaos_office.pptx.writer`.
+- Auto-segmentation: each `Heading(depth=1)` starts a new slide; tables get their own slide.
+- Layout selection: Title Slide (H1+H2), Title+Content (H1+body), Blank (tables, no heading).
+- Block types: Heading (title/subtitle placeholders), Paragraph, BulletList/OrderedList (XML bullet/numbering via `a:buChar`/`a:buAutoNum`), Table (`add_table` shape), CodeBlock (Consolas monospace), BlockQuote, speaker notes.
+- Inline formatting: Strong (bold), Emphasis (italic), Code (Consolas), Link (hyperlink.address).
+- Template support: optional custom `.pptx` template for branded output.
+- **Bug note**: `SlidePlaceholders.__contains__` returns False for valid indices; use try/except not `in`.
+- **Phase 2 pending**: formatting propagation, speaker notes write-back, image sizing.
+
 ## PPTX Extraction (Phase 3 — complete)
 - Uses **python-pptx** (MIT, v1.0.2) for high-level shape traversal + OPC/lxml fallback for SmartArt.
 - Each slide → `Div(classes="slide", slide_number=N)`. Shapes sorted by position (top, left).
