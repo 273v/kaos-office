@@ -355,9 +355,11 @@ markdown = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.0.0" },
+    { name = "imagehash", marker = "extra == 'dedup'", specifier = ">=4.3.0" },
     { name = "kaos-core", editable = "../kaos-core" },
     { name = "kaos-mcp", marker = "extra == 'mcp'", editable = "../kaos-mcp" },
     { name = "kaos-nlp-core", marker = "extra == 'nlp'", editable = "../kaos-nlp-core" },
+    { name = "kaos-nlp-transformers", marker = "extra == 'dedup'", editable = "../kaos-nlp-transformers" },
     { name = "lxml", marker = "extra == 'html'", specifier = ">=5.0.0" },
     { name = "markdown-it-py", extras = ["plugins"], marker = "extra == 'markdown'", specifier = ">=3.0.0" },
     { name = "numpy", marker = "extra == 'images'", specifier = ">=2.0.0" },
@@ -365,9 +367,10 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'images'", specifier = ">=11.0.0" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0.0" },
     { name = "pydantic", specifier = ">=2.11.0" },
+    { name = "scipy", marker = "extra == 'dedup'", specifier = ">=1.13.0" },
     { name = "uuid6", marker = "python_full_version < '3.14'", specifier = ">=2024.7.10" },
 ]
-provides-extras = ["duckdb", "html", "images", "layout", "markdown", "mcp", "nlp", "polars"]
+provides-extras = ["dedup", "duckdb", "html", "images", "layout", "markdown", "mcp", "nlp", "polars"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -459,6 +462,7 @@ provides-extras = ["mcp"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "datasets", specifier = ">=4.8.4" },
     { name = "kaos-content", editable = "../kaos-content" },
     { name = "kaos-ml-core", editable = "../kaos-ml-core" },
     { name = "kaos-nlp-transformers", editable = "../kaos-nlp-transformers" },
@@ -497,6 +501,9 @@ xlsx-calamine = [
 xlsx-formulas = [
     { name = "openpyxl" },
 ]
+xlsx-write = [
+    { name = "xlsxwriter" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -508,6 +515,7 @@ dev = [
     { name = "python-pptx" },
     { name = "ruff" },
     { name = "ty" },
+    { name = "xlsxwriter" },
 ]
 
 [package.metadata]
@@ -520,8 +528,9 @@ requires-dist = [
     { name = "openpyxl", marker = "extra == 'xlsx-formulas'", specifier = ">=3.1" },
     { name = "python-calamine", marker = "extra == 'xlsx-calamine'", specifier = ">=0.6" },
     { name = "python-pptx", marker = "extra == 'pptx'", specifier = ">=1.0" },
+    { name = "xlsxwriter", marker = "extra == 'xlsx-write'", specifier = ">=3.2" },
 ]
-provides-extras = ["mcp", "nlp", "pptx", "xlsx-calamine", "xlsx-formulas"]
+provides-extras = ["mcp", "nlp", "pptx", "xlsx-calamine", "xlsx-formulas", "xlsx-write"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -533,6 +542,7 @@ dev = [
     { name = "python-pptx", specifier = ">=1.0" },
     { name = "ruff", specifier = ">=0.11.0" },
     { name = "ty", specifier = ">=0.0.1a17" },
+    { name = "xlsxwriter", specifier = ">=3.2" },
 ]
 
 [[package]]
