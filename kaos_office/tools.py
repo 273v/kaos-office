@@ -883,7 +883,9 @@ class GetSheetXlsxTool(KaosTool):
         return ToolMetadata(
             name="kaos-office-get-sheet-xlsx",
             display_name="Get XLSX Sheet",
-            description="Extract a single sheet's data. Use list-sheets-xlsx to see available sheets.",
+            description=(
+                "Extract a single sheet's data. Use list-sheets-xlsx to see available sheets."
+            ),
             category=ToolCategory.DOCUMENT,
             capability=ToolCapability.EXTRACT,
             module_name=_MODULE,

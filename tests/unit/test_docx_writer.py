@@ -15,6 +15,7 @@ import time
 import zipfile
 from io import BytesIO
 from pathlib import Path
+from xml.etree import ElementTree as etree
 
 import pytest
 from kaos_content.model.blocks import (
@@ -41,7 +42,6 @@ from kaos_content.model.inlines import (
 )
 from kaos_content.model.table import Cell, Row, TableSection
 from kaos_content.serializers.text import serialize_text
-from lxml import etree
 
 from kaos_office.docx.reader import parse_docx
 from kaos_office.docx.writer import write_docx, write_docx_bytes
@@ -56,7 +56,7 @@ def _zip_parts(docx_bytes: bytes) -> list[str]:
     return sorted(zipfile.ZipFile(BytesIO(docx_bytes)).namelist())
 
 
-def _doc_xml(docx_bytes: bytes) -> etree._Element:
+def _doc_xml(docx_bytes: bytes) -> etree.Element:
     """Parse word/document.xml from DOCX bytes."""
     zf = zipfile.ZipFile(BytesIO(docx_bytes))
     return etree.fromstring(zf.read("word/document.xml"))
@@ -625,7 +625,7 @@ class TestStyleRoundTrip:
         doc2 = parse_docx(out)
 
         # Verify heading blocks survived
-        headings = [b for b in doc2.body if type(b).__name__ == "Heading"]
+        headings = [b for b in doc2.body if isinstance(b, Heading)]
         assert len(headings) >= 2
         assert headings[0].depth == 1
         assert headings[1].depth == 2
@@ -654,7 +654,7 @@ class TestStyleRoundTrip:
         out = tmp_path / "h6_rt.docx"
         write_docx(doc, out)
         doc2 = parse_docx(out)
-        headings = [b for b in doc2.body if type(b).__name__ == "Heading"]
+        headings = [b for b in doc2.body if isinstance(b, Heading)]
         assert [h.depth for h in headings] == [1, 2, 3, 4, 5, 6]
 
 

@@ -9,6 +9,7 @@ Run with: uv run python tests/benchmark_real_comparison.py
 
 from __future__ import annotations
 
+import importlib
 import time
 from pathlib import Path
 
@@ -66,14 +67,17 @@ def bench_kaos_docx(path: Path) -> dict:
 
 
 def bench_mammoth_docx(path: Path) -> dict:
-    import mammoth
+    mammoth = importlib.import_module("mammoth")
+    convert_to_markdown = mammoth.convert_to_markdown
 
     t0 = time.perf_counter()
     with path.open("rb") as f:
-        result = mammoth.convert_to_markdown(f)
+        result = convert_to_markdown(f)
     total_ms = (time.perf_counter() - t0) * 1000
 
-    md = result.value
+    md = getattr(result, "value", None)
+    if not isinstance(md, str):
+        raise TypeError("mammoth result did not expose string value")
     return {
         "tool": "mammoth",
         "total_ms": round(total_ms, 1),
@@ -86,14 +90,16 @@ def bench_mammoth_docx(path: Path) -> dict:
 
 
 def bench_markitdown_docx(path: Path) -> dict:
-    from markitdown import MarkItDown
-
-    converter = MarkItDown()
+    module = importlib.import_module("markitdown")
+    converter_cls = module.MarkItDown
+    converter = converter_cls()
     t0 = time.perf_counter()
     result = converter.convert(str(path))
     total_ms = (time.perf_counter() - t0) * 1000
 
-    md = result.text_content
+    md = getattr(result, "text_content", None)
+    if not isinstance(md, str):
+        raise TypeError("MarkItDown result did not expose string text_content")
     return {
         "tool": "markitdown",
         "total_ms": round(total_ms, 1),
@@ -105,14 +111,20 @@ def bench_markitdown_docx(path: Path) -> dict:
 
 
 def bench_docling_docx(path: Path) -> dict:
-    from docling.document_converter import DocumentConverter
-
-    converter = DocumentConverter()
+    module = importlib.import_module("docling.document_converter")
+    converter_cls = module.DocumentConverter
+    converter = converter_cls()
     t0 = time.perf_counter()
     result = converter.convert(str(path))
     total_ms = (time.perf_counter() - t0) * 1000
 
-    md = result.document.export_to_markdown()
+    document = getattr(result, "document", None)
+    export_to_markdown = getattr(document, "export_to_markdown", None)
+    if export_to_markdown is None:
+        raise TypeError("docling result did not expose document.export_to_markdown")
+    md = export_to_markdown()
+    if not isinstance(md, str):
+        raise TypeError("docling export_to_markdown did not return a string")
 
     return {
         "tool": "docling",
@@ -182,14 +194,16 @@ def bench_kaos_pptx(path: Path) -> dict:
 
 
 def bench_markitdown_pptx(path: Path) -> dict:
-    from markitdown import MarkItDown
-
-    converter = MarkItDown()
+    module = importlib.import_module("markitdown")
+    converter_cls = module.MarkItDown
+    converter = converter_cls()
     t0 = time.perf_counter()
     result = converter.convert(str(path))
     total_ms = (time.perf_counter() - t0) * 1000
 
-    md = result.text_content
+    md = getattr(result, "text_content", None)
+    if not isinstance(md, str):
+        raise TypeError("MarkItDown result did not expose string text_content")
     return {
         "tool": "markitdown",
         "total_ms": round(total_ms, 1),
@@ -202,14 +216,20 @@ def bench_markitdown_pptx(path: Path) -> dict:
 
 
 def bench_docling_pptx(path: Path) -> dict:
-    from docling.document_converter import DocumentConverter
-
-    converter = DocumentConverter()
+    module = importlib.import_module("docling.document_converter")
+    converter_cls = module.DocumentConverter
+    converter = converter_cls()
     t0 = time.perf_counter()
     result = converter.convert(str(path))
     total_ms = (time.perf_counter() - t0) * 1000
 
-    md = result.document.export_to_markdown()
+    document = getattr(result, "document", None)
+    export_to_markdown = getattr(document, "export_to_markdown", None)
+    if export_to_markdown is None:
+        raise TypeError("docling result did not expose document.export_to_markdown")
+    md = export_to_markdown()
+    if not isinstance(md, str):
+        raise TypeError("docling export_to_markdown did not return a string")
 
     return {
         "tool": "docling",

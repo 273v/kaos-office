@@ -124,7 +124,9 @@ class TestHyperlinks:
         doc2 = parse_docx(out)
         # Walk the block to find the Link
         found_urls = []
-        for c in doc2.body[0].children:
+        first_block = doc2.body[0]
+        assert isinstance(first_block, Paragraph)
+        for c in first_block.children:
             url = getattr(c, "url", None)
             if url:
                 found_urls.append(url)

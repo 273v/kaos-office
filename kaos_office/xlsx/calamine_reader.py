@@ -23,6 +23,7 @@ Usage::
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from typing import Any
 
@@ -38,15 +39,21 @@ from kaos_core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Calamine is required for XLSX reading
+_CALAMINE_IMPORT_ERROR = (
+    "python-calamine is required for XLSX extraction. Install with: pip install kaos-office[xlsx]"
+)
 try:
-    from python_calamine import CalamineWorkbook
-except ImportError as exc:
-    msg = (
-        "python-calamine is required for XLSX extraction. "
-        "Install with: pip install kaos-office[xlsx]"
-    )
-    raise ImportError(msg) from exc
+    _python_calamine = importlib.import_module("python_calamine")
+except ImportError:
+    _python_calamine = None
+
+CalamineWorkbook = getattr(_python_calamine, "CalamineWorkbook", None)
+
+
+def _require_python_calamine() -> Any:
+    if _python_calamine is None:
+        raise ImportError(_CALAMINE_IMPORT_ERROR)
+    return _python_calamine
 
 
 def parse_xlsx_calamine(
@@ -83,6 +90,8 @@ def parse_xlsx_calamine(
         msg = f"File not found: {p}"
         raise FileNotFoundError(msg)
 
+    if CalamineWorkbook is None:
+        raise ImportError(_CALAMINE_IMPORT_ERROR)
     wb = CalamineWorkbook.from_path(str(p))
 
     # Determine which sheets to extract
@@ -90,12 +99,14 @@ def parse_xlsx_calamine(
         sheet_names = sheets
     else:
         # All visible worksheets
-        from python_calamine import SheetTypeEnum, SheetVisibleEnum
+        python_calamine = _require_python_calamine()
+        sheet_type_enum = python_calamine.SheetTypeEnum
+        sheet_visible_enum = python_calamine.SheetVisibleEnum
 
         sheet_names = [
             sm.name
             for sm in wb.sheets_metadata
-            if sm.typ == SheetTypeEnum.WorkSheet and sm.visible == SheetVisibleEnum.Visible
+            if sm.typ == sheet_type_enum.WorkSheet and sm.visible == sheet_visible_enum.Visible
         ]
 
     tables: list[Table] = []
@@ -150,6 +161,8 @@ def list_sheets_calamine(path: str | Path) -> list[dict[str, Any]]:
         msg = f"File not found: {p}"
         raise FileNotFoundError(msg)
 
+    if CalamineWorkbook is None:
+        raise ImportError(_CALAMINE_IMPORT_ERROR)
     wb = CalamineWorkbook.from_path(str(p))
     result = []
     for sm in wb.sheets_metadata:

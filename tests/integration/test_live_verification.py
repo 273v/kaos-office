@@ -226,15 +226,17 @@ class TestDocxLiveVerification:
                 Paragraph(
                     children=(
                         Text(
-                            value=(
-                                "Body paragraph one. " * 40
-                            ),
+                            value=("Body paragraph one. " * 40),
                         ),
                     )
                 ),
                 Paragraph(
                     children=(
-                        Text(value="Body paragraph two with a marker BODYSENTINEL for confirmation."),
+                        Text(
+                            value=(
+                                "Body paragraph two with a marker BODYSENTINEL for confirmation."
+                            )
+                        ),
                     )
                 ),
             ),
@@ -265,12 +267,9 @@ class TestDocxLiveVerification:
             "body text lost somewhere in write → LibreOffice → extract"
         )
         assert "HEADERSENTINEL" in rendered_text, (
-            "header didn't survive LibreOffice rendering — sectPr or header rel "
-            "may be malformed"
+            "header didn't survive LibreOffice rendering — sectPr or header rel may be malformed"
         )
-        assert "FOOTERSENTINEL" in rendered_text, (
-            "footer didn't survive LibreOffice rendering"
-        )
+        assert "FOOTERSENTINEL" in rendered_text, "footer didn't survive LibreOffice rendering"
 
 
 # ---------------------------------------------------------------------------

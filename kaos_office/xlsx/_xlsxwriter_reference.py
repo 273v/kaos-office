@@ -18,6 +18,7 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import io
 import json
@@ -70,7 +71,13 @@ def write_xlsx(
 
     wb = xlsxwriter.Workbook(str(path))
     try:
-        _write_workbook(wb, doc, bold_headers=bold_headers, auto_width=auto_width, freeze_header=freeze_header)
+        _write_workbook(
+            wb,
+            doc,
+            bold_headers=bold_headers,
+            auto_width=auto_width,
+            freeze_header=freeze_header,
+        )
     finally:
         wb.close()
 
@@ -108,7 +115,13 @@ def write_xlsx_bytes(
     buf = io.BytesIO()
     wb = xlsxwriter.Workbook(buf, {"in_memory": True})
     try:
-        _write_workbook(wb, doc, bold_headers=bold_headers, auto_width=auto_width, freeze_header=freeze_header)
+        _write_workbook(
+            wb,
+            doc,
+            bold_headers=bold_headers,
+            auto_width=auto_width,
+            freeze_header=freeze_header,
+        )
     finally:
         wb.close()
 
@@ -167,7 +180,9 @@ def _write_workbook(
         for row_idx, row in enumerate(table.rows, start=1):
             for col_idx in range(min(len(row), n_cols)):
                 value = row[col_idx]
-                col_type = columns[col_idx].column_type if col_idx < len(columns) else ColumnType.TEXT
+                col_type = (
+                    columns[col_idx].column_type if col_idx < len(columns) else ColumnType.TEXT
+                )
                 cell_fmt = format_map.get(col_type)
 
                 _write_cell(ws, row_idx, col_idx, value, col_type, cell_fmt)
@@ -186,14 +201,14 @@ def _write_workbook(
         # Restore merged cells from metadata
         merged = table.metadata.get("merged_ranges", [])
         for merge_ref in merged:
-            try:
+            with contextlib.suppress(Exception):
                 ws.merge_range(merge_ref, "")
-            except Exception:
-                pass  # Skip invalid merge ranges
 
         logger.debug(
             "xlsx.writer: wrote sheet %s, rows=%d, cols=%d",
-            sheet_name, len(table.rows), n_cols,
+            sheet_name,
+            len(table.rows),
+            n_cols,
         )
 
 
@@ -212,11 +227,12 @@ def _write_cell(
         return  # Skip null cells
 
     # Date/time types → serial number with format
-    if col_type in (ColumnType.DATE, ColumnType.DATETIME, ColumnType.TIME):
-        if isinstance(value, (datetime.date, datetime.datetime, datetime.time)):
-            serial = date_to_serial(value)
-            ws.write_number(row, col, serial, fmt)
-            return
+    if col_type in (ColumnType.DATE, ColumnType.DATETIME, ColumnType.TIME) and isinstance(
+        value, (datetime.date, datetime.datetime, datetime.time)
+    ):
+        serial = date_to_serial(value)
+        ws.write_number(row, col, serial, fmt)
+        return
 
     # Duration → fractional days
     if col_type == ColumnType.DURATION and isinstance(value, datetime.timedelta):

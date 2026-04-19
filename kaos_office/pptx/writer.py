@@ -21,6 +21,7 @@ from typing import Any
 
 from kaos_core.logging import get_logger
 from pptx import Presentation
+from pptx.presentation import Presentation as PptxPresentation
 from pptx.util import Inches, Pt
 
 logger = get_logger(__name__)
@@ -160,7 +161,7 @@ _TITLE_SLIDE_LAYOUT = 0  # "Title Slide"
 _BLANK_LAYOUT = 6  # "Blank" (index 5 is "Title Only")
 
 
-def _add_slide(prs: Presentation, blocks: list) -> None:
+def _add_slide(prs: PptxPresentation, blocks: list[Any]) -> None:
     """Add a single slide to the presentation from a group of blocks."""
     from kaos_content.model.blocks import Heading, Table
 

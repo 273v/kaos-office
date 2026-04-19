@@ -432,7 +432,8 @@ class TestSpatialOrdering:
     <p:cNvSpPr><a:spLocks xmlns:a="{A_NS}" noGrp="1"/></p:cNvSpPr>
     <p:nvPr><p:ph type="body" idx="1"/></p:nvPr>
   </p:nvSpPr>
-  <p:spPr><a:xfrm xmlns:a="{A_NS}"><a:off x="100" y="2000000"/><a:ext cx="5000000" cy="500000"/></a:xfrm></p:spPr>
+  <p:spPr><a:xfrm xmlns:a="{A_NS}"><a:off x="100" y="2000000"/><a:ext cx="5000000"
+    cy="500000"/></a:xfrm></p:spPr>
   <p:txBody>
     <a:bodyPr xmlns:a="{A_NS}"/>
     <a:p xmlns:a="{A_NS}"><a:pPr lvl="0"><a:buNone/></a:pPr><a:r><a:t>Lower shape</a:t></a:r></a:p>
@@ -444,7 +445,8 @@ class TestSpatialOrdering:
     <p:cNvSpPr><a:spLocks xmlns:a="{A_NS}" noGrp="1"/></p:cNvSpPr>
     <p:nvPr><p:ph type="body" idx="2"/></p:nvPr>
   </p:nvSpPr>
-  <p:spPr><a:xfrm xmlns:a="{A_NS}"><a:off x="100" y="100000"/><a:ext cx="5000000" cy="500000"/></a:xfrm></p:spPr>
+  <p:spPr><a:xfrm xmlns:a="{A_NS}"><a:off x="100" y="100000"/><a:ext cx="5000000"
+    cy="500000"/></a:xfrm></p:spPr>
   <p:txBody>
     <a:bodyPr xmlns:a="{A_NS}"/>
     <a:p xmlns:a="{A_NS}"><a:pPr lvl="0"><a:buNone/></a:pPr><a:r><a:t>Upper shape</a:t></a:r></a:p>
@@ -465,7 +467,8 @@ class TestMultipleSlides:
 
     def test_two_slides(self):
         slide1 = f"""<p:sp>
-  <p:nvSpPr><p:cNvPr id="2" name="Title 1"/><p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>
+  <p:nvSpPr><p:cNvPr id="2" name="Title 1"/><p:cNvSpPr/><p:nvPr>
+    <p:ph type="title"/></p:nvPr></p:nvSpPr>
   <p:spPr/>
   <p:txBody>
     <a:bodyPr xmlns:a="{A_NS}"/>
@@ -473,7 +476,8 @@ class TestMultipleSlides:
   </p:txBody>
 </p:sp>"""
         slide2 = f"""<p:sp>
-  <p:nvSpPr><p:cNvPr id="2" name="Title 1"/><p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>
+  <p:nvSpPr><p:cNvPr id="2" name="Title 1"/><p:cNvSpPr/><p:nvPr>
+    <p:ph type="title"/></p:nvPr></p:nvSpPr>
   <p:spPr/>
   <p:txBody>
     <a:bodyPr xmlns:a="{A_NS}"/>

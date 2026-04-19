@@ -116,7 +116,9 @@ def make_minimal_docx(
     root_rels = f"""\
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="{RELS_NS}">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    Target="word/document.xml"/>
 </Relationships>"""
 
     doc_rels = f"""\
@@ -210,7 +212,8 @@ def make_minimal_pptx(
     <p:cNvSpPr/>
     <p:nvPr><p:ph type="title"/></p:nvPr>
   </p:nvSpPr>
-  <p:spPr><a:xfrm xmlns:a="{A_NS}"><a:off x="0" y="0"/><a:ext cx="9144000" cy="1143000"/></a:xfrm></p:spPr>
+  <p:spPr><a:xfrm xmlns:a="{A_NS}"><a:off x="0" y="0"/><a:ext cx="9144000"
+    cy="1143000"/></a:xfrm></p:spPr>
   <p:txBody>
     <a:bodyPr xmlns:a="{A_NS}"/>
     <a:p xmlns:a="{A_NS}"><a:r><a:t>Test Title</a:t></a:r></a:p>
@@ -281,19 +284,25 @@ def make_minimal_pptx(
     slide_layout_rels = f"""\
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="{RELS_NS}">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster"
+    Target="../slideMasters/slideMaster1.xml"/>
 </Relationships>"""
 
     slide_master_rels = f"""\
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="{RELS_NS}">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout"
+    Target="../slideLayouts/slideLayout1.xml"/>
 </Relationships>"""
 
     root_rels = f"""\
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="{RELS_NS}">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    Target="ppt/presentation.xml"/>
 </Relationships>"""
 
     # Build content types
@@ -357,7 +366,8 @@ def make_minimal_pptx(
             # Build slide rels — always include slide layout
             slide_rel_entries = [
                 '<Relationship Id="rId99" '
-                'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" '
+                'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                'relationships/slideLayout" '
                 'Target="../slideLayouts/slideLayout1.xml"/>',
             ]
             if extra_slide_rels and i in extra_slide_rels:
@@ -366,7 +376,9 @@ def make_minimal_pptx(
                 notes_rid = f"rId{100 + i}"
                 slide_rel_entries.append(
                     f'<Relationship Id="{notes_rid}" '
-                    f'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" '
+                    "Type="
+                    '"http://schemas.openxmlformats.org/officeDocument/2006/'
+                    f'relationships/notesSlide" '
                     f'Target="../notesSlides/notesSlide{i + 1}.xml"/>'
                 )
                 zf.writestr(f"ppt/notesSlides/notesSlide{i + 1}.xml", notes_xmls[i])

@@ -11,6 +11,7 @@ Run with: uv run python tests/benchmark_comparison.py
 
 from __future__ import annotations
 
+import importlib
 import time
 from pathlib import Path
 
@@ -65,7 +66,7 @@ def bench_kaos_office(path: Path) -> dict:
 
 def bench_mammoth(path: Path) -> dict:
     """Benchmark mammoth extraction."""
-    import mammoth
+    mammoth = importlib.import_module("mammoth")
 
     t0 = time.perf_counter()
     with path.open("rb") as f:
@@ -88,9 +89,10 @@ def bench_mammoth(path: Path) -> dict:
 
 def bench_markitdown(path: Path) -> dict:
     """Benchmark markitdown extraction."""
-    from markitdown import MarkItDown
+    markitdown = importlib.import_module("markitdown")
+    converter_cls = markitdown.MarkItDown
 
-    converter = MarkItDown()
+    converter = converter_cls()
     t0 = time.perf_counter()
     result = converter.convert(str(path))
     total = time.perf_counter() - t0
@@ -109,7 +111,7 @@ def bench_markitdown(path: Path) -> dict:
 
 def bench_python_docx(path: Path) -> dict:
     """Benchmark python-docx text extraction."""
-    import docx  # ty: ignore[unresolved-import]  # optional competitor dep
+    docx = importlib.import_module("docx")
 
     t0 = time.perf_counter()
     document = docx.Document(str(path))

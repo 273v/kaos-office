@@ -9,6 +9,7 @@ Run: cd kaos-office && uv run python tests/benchmark_competitors.py
 
 from __future__ import annotations
 
+import importlib
 import time
 from pathlib import Path
 
@@ -56,20 +57,27 @@ def extract_kaos(path: Path) -> str:
 
 def extract_markitdown(path: Path) -> str:
     """Extract with Microsoft MarkItDown."""
-    from markitdown import MarkItDown
-
-    md = MarkItDown()
+    module = importlib.import_module("markitdown")
+    converter_cls = module.MarkItDown
+    md = converter_cls()
     result = md.convert(str(path))
-    return result.text_content
+    text_content = getattr(result, "text_content", None)
+    if not isinstance(text_content, str):
+        raise TypeError("MarkItDown result did not expose string text_content")
+    return text_content
 
 
 def extract_mammoth(path: Path) -> str:
     """Extract DOCX with mammoth (HTML output)."""
-    import mammoth
+    mammoth = importlib.import_module("mammoth")
+    convert_to_markdown = mammoth.convert_to_markdown
 
     with path.open("rb") as f:
-        result = mammoth.convert_to_markdown(f)
-    return result.value
+        result = convert_to_markdown(f)
+    value = getattr(result, "value", None)
+    if not isinstance(value, str):
+        raise TypeError("mammoth result did not expose string value")
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +93,9 @@ def run_benchmark() -> None:
     # --- DOCX ---
     print("\n## DOCX Files\n")
     print(
-        f"{'File':<45s} {'Library':<15s} {'Chars':>7s} {'Lines':>6s} {'Bold':>5s} {'Ital':>5s} {'Hdrs':>5s} {'Tbls':>5s} {'List':>5s} {'Time':>7s}"
+        f"{'File':<45s} {'Library':<15s} {'Chars':>7s} {'Lines':>6s} "
+        f"{'Bold':>5s} {'Ital':>5s} {'Hdrs':>5s} {'Tbls':>5s} "
+        f"{'List':>5s} {'Time':>7s}"
     )
     print("-" * 100)
 
@@ -104,7 +114,8 @@ def run_benchmark() -> None:
                 print(
                     f"{f.name:<45s} {name:<15s} {q['chars']:>7d} {q['lines']:>6d} "
                     f"{'Y' if q['has_bold'] else '-':>5s} {'Y' if q['has_italic'] else '-':>5s} "
-                    f"{'Y' if q['has_headings'] else '-':>5s} {'Y' if q['has_tables'] else '-':>5s} "
+                    f"{'Y' if q['has_headings'] else '-':>5s} "
+                    f"{'Y' if q['has_tables'] else '-':>5s} "
                     f"{'Y' if q['has_lists'] else '-':>5s} {elapsed:>6.3f}s"
                 )
             except Exception as exc:
@@ -114,7 +125,8 @@ def run_benchmark() -> None:
     # --- PPTX ---
     print("\n## PPTX Files\n")
     print(
-        f"{'File':<45s} {'Library':<15s} {'Chars':>7s} {'Lines':>6s} {'Bold':>5s} {'Hdrs':>5s} {'Tbls':>5s} {'List':>5s} {'Time':>7s}"
+        f"{'File':<45s} {'Library':<15s} {'Chars':>7s} {'Lines':>6s} "
+        f"{'Bold':>5s} {'Hdrs':>5s} {'Tbls':>5s} {'List':>5s} {'Time':>7s}"
     )
     print("-" * 100)
 
@@ -132,7 +144,8 @@ def run_benchmark() -> None:
                 print(
                     f"{f.name:<45s} {name:<15s} {q['chars']:>7d} {q['lines']:>6d} "
                     f"{'Y' if q['has_bold'] else '-':>5s} "
-                    f"{'Y' if q['has_headings'] else '-':>5s} {'Y' if q['has_tables'] else '-':>5s} "
+                    f"{'Y' if q['has_headings'] else '-':>5s} "
+                    f"{'Y' if q['has_tables'] else '-':>5s} "
                     f"{'Y' if q['has_lists'] else '-':>5s} {elapsed:>6.3f}s"
                 )
             except Exception as exc:

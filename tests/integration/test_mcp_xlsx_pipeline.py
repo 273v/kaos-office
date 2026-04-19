@@ -10,6 +10,7 @@ Proves the full XLSX pipeline:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -30,6 +31,12 @@ def _get_text(result: types.CallToolResult, index: int = 0) -> str:
     content = result.content[index]
     assert isinstance(content, TextContent)
     return content.text
+
+
+def _structured(result: types.CallToolResult) -> dict[str, Any]:
+    structured = result.structuredContent
+    assert structured is not None
+    return structured
 
 
 def _make_runtime(tmp_path: Path) -> KaosRuntime:
@@ -174,7 +181,7 @@ async def test_list_sheets_dimensions(tmp_path: Path) -> None:
             {"path": str(xlsx_path)},
         )
         assert not result.isError
-        sheets = result.structuredContent["sheets"]
+        sheets = _structured(result)["sheets"]
 
         # Revenue: 1 header + 3 data = 4 rows, 2 columns
         revenue = sheets[0]
@@ -446,7 +453,7 @@ async def test_xlsx_full_pipeline(tmp_path: Path) -> None:
             {"path": str(xlsx_path)},
         )
         assert not list_result.isError
-        sheets = list_result.structuredContent["sheets"]
+        sheets = _structured(list_result)["sheets"]
         sheet_names = [s["name"] for s in sheets]
         assert sheet_names == ["Revenue", "Expenses", "Summary"]
 
@@ -475,6 +482,6 @@ async def test_xlsx_full_pipeline(tmp_path: Path) -> None:
             {"path": str(xlsx_path)},
         )
         assert not meta_result.isError
-        meta = meta_result.structuredContent
+        meta = _structured(meta_result)
         assert meta["table_count"] == 3
         assert meta["total_rows"] == 7

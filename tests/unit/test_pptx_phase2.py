@@ -51,7 +51,7 @@ class TestImages:
         out = tmp_path / "img.pptx"
         write_pptx(doc, out)
 
-        prs = PptxPresentation(out)
+        prs = PptxPresentation(str(out))
         assert len(prs.slides) == 1
         slide = prs.slides[0]
         # shape_type 13 == PICTURE
@@ -71,7 +71,7 @@ class TestImages:
         out = tmp_path / "alt.pptx"
         write_pptx(doc, out)
 
-        prs = PptxPresentation(out)
+        prs = PptxPresentation(str(out))
         slide = prs.slides[0]
         pictures = [s for s in slide.shapes if s.shape_type == 13]
         assert pictures
@@ -98,7 +98,7 @@ class TestImages:
         out = tmp_path / "missing.pptx"
         write_pptx(doc, out)
         # Just ensure no crash — alt text drops into a text box
-        prs = PptxPresentation(out)
+        prs = PptxPresentation(str(out))
         assert len(prs.slides) == 1
 
     def test_image_roundtrip_through_reader(self, tmp_path: Path, red_png: Path) -> None:
@@ -117,7 +117,7 @@ class TestImages:
         # Walk and find at least one Image node
         from kaos_content.traversal import walk
 
-        images = [n for block in doc2.body for n in walk(block) if type(n).__name__ == "Image"]
+        images = [n for block in doc2.body for n in walk(block) if isinstance(n, Image)]
         assert images, "no image survived round-trip"
         # Alt text preserved
         assert any("R" in (img.alt or "") for img in images)
@@ -168,7 +168,7 @@ class TestTableMerging:
         out = tmp_path / "merge.pptx"
         write_pptx(doc, out)
 
-        prs = PptxPresentation(out)
+        prs = PptxPresentation(str(out))
         slide = prs.slides[0]
         tables = [s for s in slide.shapes if s.has_table]
         assert tables
@@ -208,7 +208,7 @@ class TestTableMerging:
         out = tmp_path / "vmerge.pptx"
         write_pptx(doc, out)
 
-        prs = PptxPresentation(out)
+        prs = PptxPresentation(str(out))
         tbl = prs.slides[0].shapes[0].table
         assert tbl.cell(0, 0)._tc.get("rowSpan") == "2"
         assert tbl.cell(1, 0)._tc.get("vMerge") == "1"
@@ -235,7 +235,7 @@ class TestSpeakerNotes:
         out = tmp_path / "notes.pptx"
         write_pptx(doc, out)
 
-        prs = PptxPresentation(out)
+        prs = PptxPresentation(str(out))
         slide = prs.slides[0]
         assert slide.has_notes_slide
         assert "emphasize X" in slide.notes_slide.notes_text_frame.text
@@ -257,7 +257,7 @@ class TestSpeakerNotes:
         out = tmp_path / "multinotes.pptx"
         write_pptx(doc, out)
 
-        prs = PptxPresentation(out)
+        prs = PptxPresentation(str(out))
         slide = prs.slides[0]
         assert slide.has_notes_slide
         notes = slide.notes_slide.notes_text_frame.text
@@ -275,7 +275,7 @@ class TestSpeakerNotes:
         out = tmp_path / "no_notes.pptx"
         write_pptx(doc, out)
 
-        prs = PptxPresentation(out)
+        prs = PptxPresentation(str(out))
         slide = prs.slides[0]
         # has_notes_slide may be False or the text is empty
         if slide.has_notes_slide:

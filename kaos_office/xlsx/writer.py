@@ -62,9 +62,13 @@ _CT_STYLES = "application/vnd.openxmlformats-officedocument.spreadsheetml.styles
 _CT_RELS = "application/vnd.openxmlformats-package.relationships+xml"
 
 # Relationship types
-_RT_OFFICE_DOCUMENT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+_RT_OFFICE_DOCUMENT = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+)
 _RT_WORKSHEET = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
-_RT_SHARED_STRINGS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings"
+_RT_SHARED_STRINGS = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings"
+)
 _RT_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
 
 # Namespace maps for serialization
@@ -227,12 +231,18 @@ def _build_content_types(tables: tuple) -> bytes:
     etree.SubElement(root, "Default", Extension="rels", ContentType=_CT_RELS)
     etree.SubElement(root, "Default", Extension="xml", ContentType="application/xml")
     etree.SubElement(root, "Override", PartName="/xl/workbook.xml", ContentType=_CT_WORKBOOK)
-    etree.SubElement(root, "Override", PartName="/xl/sharedStrings.xml", ContentType=_CT_SHARED_STRINGS)
+    etree.SubElement(
+        root,
+        "Override",
+        PartName="/xl/sharedStrings.xml",
+        ContentType=_CT_SHARED_STRINGS,
+    )
     etree.SubElement(root, "Override", PartName="/xl/styles.xml", ContentType=_CT_STYLES)
 
     for i in range(len(tables)):
         etree.SubElement(
-            root, "Override",
+            root,
+            "Override",
             PartName=f"/xl/worksheets/sheet{i + 1}.xml",
             ContentType=_CT_WORKSHEET,
         )
@@ -243,7 +253,13 @@ def _build_content_types(tables: tuple) -> bytes:
 def _build_root_rels() -> bytes:
     """Build _rels/.rels — root relationships."""
     root = etree.Element("Relationships", nsmap=_RELS_NSMAP)
-    etree.SubElement(root, "Relationship", Id="rId1", Type=_RT_OFFICE_DOCUMENT, Target="xl/workbook.xml")
+    etree.SubElement(
+        root,
+        "Relationship",
+        Id="rId1",
+        Type=_RT_OFFICE_DOCUMENT,
+        Target="xl/workbook.xml",
+    )
     return _xml_decl(root)
 
 
@@ -255,7 +271,8 @@ def _build_workbook(tables: tuple) -> bytes:
     for i, table in enumerate(tables):
         name = _safe_sheet_name(table.name) or f"Sheet{i + 1}"
         etree.SubElement(
-            sheets_el, SML_SHEET,
+            sheets_el,
+            SML_SHEET,
             name=name,
             sheetId=str(i + 1),
             attrib={f"{{{R}}}id": f"rId{i + 1}"},
@@ -270,15 +287,28 @@ def _build_workbook_rels(tables: tuple) -> bytes:
 
     for i in range(len(tables)):
         etree.SubElement(
-            root, "Relationship",
+            root,
+            "Relationship",
             Id=f"rId{i + 1}",
             Type=_RT_WORKSHEET,
             Target=f"worksheets/sheet{i + 1}.xml",
         )
 
     next_id = len(tables) + 1
-    etree.SubElement(root, "Relationship", Id=f"rId{next_id}", Type=_RT_STYLES, Target="styles.xml")
-    etree.SubElement(root, "Relationship", Id=f"rId{next_id + 1}", Type=_RT_SHARED_STRINGS, Target="sharedStrings.xml")
+    etree.SubElement(
+        root,
+        "Relationship",
+        Id=f"rId{next_id}",
+        Type=_RT_STYLES,
+        Target="styles.xml",
+    )
+    etree.SubElement(
+        root,
+        "Relationship",
+        Id=f"rId{next_id + 1}",
+        Type=_RT_SHARED_STRINGS,
+        Target="sharedStrings.xml",
+    )
 
     return _xml_decl(root)
 
@@ -315,8 +345,8 @@ def _build_styles() -> bytes:
 
     # Custom number formats
     numFmts = etree.SubElement(root, f"{{{SML}}}numFmts", count="2")
-    etree.SubElement(numFmts, f"{{{SML}}}numFmt", numFmtId="164", formatCode='$#,##0.00')
-    etree.SubElement(numFmts, f"{{{SML}}}numFmt", numFmtId="165", formatCode='#,##0.00')
+    etree.SubElement(numFmts, f"{{{SML}}}numFmt", numFmtId="164", formatCode="$#,##0.00")
+    etree.SubElement(numFmts, f"{{{SML}}}numFmt", numFmtId="165", formatCode="#,##0.00")
 
     # Fonts: 0=default, 1=bold
     fonts = etree.SubElement(root, f"{{{SML}}}fonts", count="2")
@@ -343,19 +373,91 @@ def _build_styles() -> bytes:
 
     # Cell style XFs (base)
     cellStyleXfs = etree.SubElement(root, f"{{{SML}}}cellStyleXfs", count="1")
-    etree.SubElement(cellStyleXfs, f"{{{SML}}}xf", numFmtId="0", fontId="0", fillId="0", borderId="0")
+    etree.SubElement(
+        cellStyleXfs,
+        f"{{{SML}}}xf",
+        numFmtId="0",
+        fontId="0",
+        fillId="0",
+        borderId="0",
+    )
 
     # Cell XFs (actual cell formats)
     # 0=General, 1=Date, 2=DateTime, 3=Time, 4=Duration, 5=Money, 6=Decimal, 7=Bold
     cellXfs = etree.SubElement(root, f"{{{SML}}}cellXfs", count="8")
-    etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId="0", fontId="0", fillId="0", borderId="0", xfId="0")
-    etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId=str(_NUMFMT_DATE), fontId="0", fillId="0", borderId="0", xfId="0", applyNumberFormat="1")
-    etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId=str(_NUMFMT_DATETIME), fontId="0", fillId="0", borderId="0", xfId="0", applyNumberFormat="1")
-    etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId=str(_NUMFMT_TIME), fontId="0", fillId="0", borderId="0", xfId="0", applyNumberFormat="1")
-    etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId=str(_NUMFMT_DURATION), fontId="0", fillId="0", borderId="0", xfId="0", applyNumberFormat="1")
-    etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId=str(_NUMFMT_MONEY), fontId="0", fillId="0", borderId="0", xfId="0", applyNumberFormat="1")
-    etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId=str(_NUMFMT_DECIMAL), fontId="0", fillId="0", borderId="0", xfId="0", applyNumberFormat="1")
-    etree.SubElement(cellXfs, f"{{{SML}}}xf", numFmtId="0", fontId="1", fillId="0", borderId="0", xfId="0", applyFont="1")
+    etree.SubElement(
+        cellXfs, f"{{{SML}}}xf", numFmtId="0", fontId="0", fillId="0", borderId="0", xfId="0"
+    )
+    etree.SubElement(
+        cellXfs,
+        f"{{{SML}}}xf",
+        numFmtId=str(_NUMFMT_DATE),
+        fontId="0",
+        fillId="0",
+        borderId="0",
+        xfId="0",
+        applyNumberFormat="1",
+    )
+    etree.SubElement(
+        cellXfs,
+        f"{{{SML}}}xf",
+        numFmtId=str(_NUMFMT_DATETIME),
+        fontId="0",
+        fillId="0",
+        borderId="0",
+        xfId="0",
+        applyNumberFormat="1",
+    )
+    etree.SubElement(
+        cellXfs,
+        f"{{{SML}}}xf",
+        numFmtId=str(_NUMFMT_TIME),
+        fontId="0",
+        fillId="0",
+        borderId="0",
+        xfId="0",
+        applyNumberFormat="1",
+    )
+    etree.SubElement(
+        cellXfs,
+        f"{{{SML}}}xf",
+        numFmtId=str(_NUMFMT_DURATION),
+        fontId="0",
+        fillId="0",
+        borderId="0",
+        xfId="0",
+        applyNumberFormat="1",
+    )
+    etree.SubElement(
+        cellXfs,
+        f"{{{SML}}}xf",
+        numFmtId=str(_NUMFMT_MONEY),
+        fontId="0",
+        fillId="0",
+        borderId="0",
+        xfId="0",
+        applyNumberFormat="1",
+    )
+    etree.SubElement(
+        cellXfs,
+        f"{{{SML}}}xf",
+        numFmtId=str(_NUMFMT_DECIMAL),
+        fontId="0",
+        fillId="0",
+        borderId="0",
+        xfId="0",
+        applyNumberFormat="1",
+    )
+    etree.SubElement(
+        cellXfs,
+        f"{{{SML}}}xf",
+        numFmtId="0",
+        fontId="1",
+        fillId="0",
+        borderId="0",
+        xfId="0",
+        applyFont="1",
+    )
 
     # Cell styles (required for openpyxl compatibility — "Normal" default style)
     cellStyles = etree.SubElement(root, f"{{{SML}}}cellStyles", count="1")
@@ -403,9 +505,12 @@ def _build_worksheet(table: Any, sst: dict[str, int], style_map: dict) -> bytes:
         for i, width in enumerate(col_widths):
             clamped = max(_MIN_COL_WIDTH, min(width + 2, _MAX_COL_WIDTH))
             etree.SubElement(
-                cols_el, f"{{{SML}}}col",
-                min=str(i + 1), max=str(i + 1),
-                width=str(clamped), customWidth="1",
+                cols_el,
+                f"{{{SML}}}col",
+                min=str(i + 1),
+                max=str(i + 1),
+                width=str(clamped),
+                customWidth="1",
             )
 
     # Sheet data
@@ -422,7 +527,14 @@ def _build_worksheet(table: Any, sst: dict[str, int], style_map: dict) -> bytes:
     # Freeze header row
     sv = etree.SubElement(root, f"{{{SML}}}sheetViews")
     sheet_view = etree.SubElement(sv, f"{{{SML}}}sheetView", workbookViewId="0", tabSelected="1")
-    etree.SubElement(sheet_view, f"{{{SML}}}pane", ySplit="1", topLeftCell="A2", activePane="bottomLeft", state="frozen")
+    etree.SubElement(
+        sheet_view,
+        f"{{{SML}}}pane",
+        ySplit="1",
+        topLeftCell="A2",
+        activePane="bottomLeft",
+        state="frozen",
+    )
 
     # Data rows
     for row_idx, row in enumerate(table.rows, start=2):
