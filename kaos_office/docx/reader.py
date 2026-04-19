@@ -98,6 +98,7 @@ from kaos_office.ooxml.namespace import (
     WP,
     A,
     W,
+    emu_to_pt,
     qn,
 )
 from kaos_office.opc.package import OPCPackage
@@ -866,13 +867,32 @@ def _extract_image(drawing_el: etree._Element, ctx: ParseContext) -> Image | Non
     alt = doc_pr.get("descr") if doc_pr is not None else None
     title = doc_pr.get("name") if doc_pr is not None else None
 
-    # Future: extract dimensions from wp:extent for provenance bounding box
+    # Extract dimensions from wp:extent (EMUs in OOXML → points for AST)
+    width_pt: float | None = None
+    height_pt: float | None = None
+    extent = drawing_el.find(f".//{qn(WP, 'extent')}")
+    if extent is not None:
+        cx = extent.get("cx")
+        cy = extent.get("cy")
+        try:
+            if cx is not None:
+                width_pt = emu_to_pt(int(cx))
+            if cy is not None:
+                height_pt = emu_to_pt(int(cy))
+        except (TypeError, ValueError):
+            pass
 
     # Build image URI
     media_name = target.rsplit("/", 1)[-1] if "/" in target else target
     src = f"docx://{media_name}"
 
-    return Image(src=src, alt=alt or None, title=title or None)
+    return Image(
+        src=src,
+        alt=alt or None,
+        title=title or None,
+        width=width_pt,
+        height=height_pt,
+    )
 
 
 # --------------------------------------------------------------------------

@@ -703,7 +703,21 @@ def _process_picture(shape: BaseShape, ctx: ParseContext) -> None:
                 ext = "jpg"
 
     src = f"pptx://{name}.{ext}"
-    ctx.builder.image(src=src, alt=alt or name)
+
+    # Shape geometry is in EMU on python-pptx; convert to points for the AST.
+    width_pt: float | None = None
+    height_pt: float | None = None
+    try:
+        from kaos_office.ooxml.namespace import emu_to_pt
+
+        if shape.width is not None:
+            width_pt = emu_to_pt(int(shape.width))
+        if shape.height is not None:
+            height_pt = emu_to_pt(int(shape.height))
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+    ctx.builder.image(src=src, alt=alt or name, width=width_pt, height=height_pt)
 
 
 def _process_notes(slide: Slide, ctx: ParseContext) -> None:

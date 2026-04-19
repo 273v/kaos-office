@@ -323,8 +323,14 @@ PPTX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.p
 # --- EMU Conversion ---
 EMU_PER_INCH = 914400
 EMU_PER_PIXEL_96DPI = 9525  # EMU_PER_INCH / 96
+EMU_PER_POINT = 12700  # EMU_PER_INCH / 72
 
 
 def emu_to_px(emu: int, dpi: int = 96) -> float:
     """Convert English Metric Units to pixels at given DPI."""
     return emu / (EMU_PER_INCH / dpi)
+
+
+def emu_to_pt(emu: int | float) -> float:
+    """Convert English Metric Units to typographic points (1 pt = 1/72 inch)."""
+    return float(emu) / EMU_PER_POINT

@@ -495,10 +495,24 @@ def _add_figure_shape(slide: Any, figure: Any) -> None:
     # Default positioning: centered-ish on the slide
     left = Inches(1.0)
     top = Inches(1.5)
-    max_width = Inches(8.0)
+
+    # Respect explicit Image.width / Image.height (in points per kaos-content
+    # convention). Fall back to a sensible max width when unset so the slide
+    # doesn't render full-bleed.
+    from pptx.util import Pt
+
+    width_pt = getattr(image, "width", None)
+    height_pt = getattr(image, "height", None)
+    size_kwargs: dict[str, Any] = {}
+    if width_pt is not None:
+        size_kwargs["width"] = Pt(float(width_pt))
+    if height_pt is not None:
+        size_kwargs["height"] = Pt(float(height_pt))
+    if not size_kwargs:
+        size_kwargs["width"] = Inches(8.0)
 
     try:
-        pic = slide.shapes.add_picture(image_file, left, top, width=max_width)
+        pic = slide.shapes.add_picture(image_file, left, top, **size_kwargs)
     except (OSError, ValueError):
         # Corrupted or unreadable image — fall back to alt text
         if alt:

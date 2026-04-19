@@ -42,7 +42,8 @@ Rust-adjacent:
 - kaos-content model uses `.value` for Text/Code/CodeBlock, `.content` for Cell (not `.children`). The writer handles both via getattr fallback.
 - `xml:space="preserve"` uses the XML namespace (`http://www.w3.org/XML/1998/namespace`), NOT the `R` namespace. `xsi:type` on dcterms elements uses `http://www.w3.org/2001/XMLSchema-instance`.
 - **Phase 3 complete**: proper hyperlink relationships (`w:hyperlink` + rId with deduped URLs), footnote/endnote write-back (`word/footnotes.xml` / `word/endnotes.xml` with required separator+continuation IDs, `w:footnoteReference` / `w:endnoteReference` runs), comment write-back (`word/comments.xml` with author/date/text, content type and rel entries added automatically).
-- **Phase 4 pending**: headers, footers, sections, page setup, images.
+- **Phase 4 pending**: headers, footers, sections, page setup, images (writer — reader captures dimensions).
+- DOCX reader populates `Image.width` / `Image.height` from `wp:extent cx`/`cy` (EMU → points via `kaos_office.ooxml.namespace.emu_to_pt`). PPTX reader/writer round-trip dimensions through `shape.width` / `shape.height` for picture shapes; writer falls back to `Inches(8.0)` width when unset. Convention: points (1/72 in).
 - **Phase 5 pending**: MCP tools, CLI integration.
 - **Known gap vs. kelvin-office**: kelvin-office has 18 DOCX test fixtures and tests modification round-trips (load → edit → save → reload → verify edit). We have 6 fixtures and only test identity round-trips.
 
