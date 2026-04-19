@@ -407,6 +407,200 @@ class TestRoundTrip:
         overlap = len(orig_words & rt_words) / len(orig_words) if orig_words else 1.0
         assert overlap >= 0.90
 
+    def test_toro_redline(self, _write_and_reparse, tmp_path: Path) -> None:
+        """Toro 2022 Term Loan - Redline — tracked changes document."""
+        orig, rt, _n_orig, _n_rt = _write_and_reparse("Toro 2022 Term Loan - Redline v1.docx")
+        orig_words = set(orig.lower().split())
+        rt_words = set(rt.lower().split())
+        overlap = len(orig_words & rt_words) / len(orig_words) if orig_words else 1.0
+        assert overlap >= 0.85  # redlines may lose some tracked-change content
+
+    def test_toro_comments(self, _write_and_reparse, tmp_path: Path) -> None:
+        """Toro 2022 Term Loan - Comments — document with comment annotations."""
+        orig, rt, _n_orig, _n_rt = _write_and_reparse("Toro 2022 Term Loan - Comments.docx")
+        orig_words = set(orig.lower().split())
+        rt_words = set(rt.lower().split())
+        overlap = len(orig_words & rt_words) / len(orig_words) if orig_words else 1.0
+        assert overlap >= 0.85  # comments not yet in writer
+
+    def test_mcs_redline(self, _write_and_reparse, tmp_path: Path) -> None:
+        """MCSRedline — 1.7MB heavyweight redline document."""
+        orig, rt, _n_orig, _n_rt = _write_and_reparse("MCSRedline10312022.docx")
+        orig_words = set(orig.lower().split())
+        rt_words = set(rt.lower().split())
+        overlap = len(orig_words & rt_words) / len(orig_words) if orig_words else 1.0
+        assert overlap >= 0.85
+
+    def test_burnout_intervention(self, _write_and_reparse, tmp_path: Path) -> None:
+        """Burnout Intervention Planning Guide — fillable form."""
+        orig, rt, _n_orig, _n_rt = _write_and_reparse(
+            "Burnout_Intervention_Planning_Guide_Fillable_Form_1.docx"
+        )
+        orig_words = set(orig.lower().split())
+        rt_words = set(rt.lower().split())
+        overlap = len(orig_words & rt_words) / len(orig_words) if orig_words else 1.0
+        assert overlap >= 0.85
+
+    def test_letter_of_commitment(self, _write_and_reparse, tmp_path: Path) -> None:
+        """Letter of Commitment for Packaged Furniture Program."""
+        orig, rt, _n_orig, _n_rt = _write_and_reparse(
+            "Letter of Commitment for Packaged Furniture Program.docx"
+        )
+        orig_words = set(orig.lower().split())
+        rt_words = set(rt.lower().split())
+        overlap = len(orig_words & rt_words) / len(orig_words) if orig_words else 1.0
+        assert overlap >= 0.85
+
+    def test_1444711772592(self, _write_and_reparse, tmp_path: Path) -> None:
+        """128KB document (1444711772592.docx)."""
+        orig, rt, _n_orig, _n_rt = _write_and_reparse("1444711772592.docx")
+        orig_words = set(orig.lower().split())
+        rt_words = set(rt.lower().split())
+        overlap = len(orig_words & rt_words) / len(orig_words) if orig_words else 1.0
+        assert overlap >= 0.85
+
+
+# ---------------------------------------------------------------------------
+# Modification round-trip tests (from kelvin-office test_round_trip_simple)
+# ---------------------------------------------------------------------------
+
+
+class TestModificationRoundTrip:
+    """Load → modify content → write → re-parse → verify edit persisted.
+
+    Ported from kelvin-office/tests/integration/test_end_to_end.py::test_round_trip_simple.
+    Since kaos-content uses frozen Pydantic models, modification means constructing a
+    new ContentDocument with model_copy(update=...) rather than in-place mutation.
+    """
+
+    def test_replace_first_paragraph(self, tmp_path: Path) -> None:
+        """Replace the first paragraph's text, verify it persists through write → re-parse."""
+        src = parse_docx(FIXTURES / "MultiParagraphSample.docx")
+        assert len(src.body) >= 1
+
+        # Replace first block with new text
+        replacement = Paragraph(children=(Text(value="REPLACEMENT PARAGRAPH TEXT"),))
+        new_body = (replacement, *src.body[1:])
+        modified = src.model_copy(update={"body": new_body})
+
+        out = tmp_path / "modified.docx"
+        write_docx(modified, out)
+        reloaded = parse_docx(out)
+        rt_text = serialize_text(reloaded)
+
+        assert "REPLACEMENT PARAGRAPH TEXT" in rt_text
+        # Original first paragraph text should NOT be present
+        assert "first paragraph" not in rt_text.lower().split("replacement")[0]
+
+    def test_append_paragraph(self, tmp_path: Path) -> None:
+        """Append a paragraph to a parsed document and verify it survives."""
+        src = parse_docx(FIXTURES / "MultiParagraphSample.docx")
+        orig_count = len(src.body)
+
+        appended = Paragraph(children=(Text(value="APPENDED BY TEST"),))
+        new_body = (*src.body, appended)
+        modified = src.model_copy(update={"body": new_body})
+        assert len(modified.body) == orig_count + 1
+
+        out = tmp_path / "appended.docx"
+        write_docx(modified, out)
+        reloaded = parse_docx(out)
+        rt_text = serialize_text(reloaded)
+
+        assert "APPENDED BY TEST" in rt_text
+
+    def test_replace_heading_text(self, tmp_path: Path) -> None:
+        """Replace a heading's text in a large document, verify it persists."""
+        src = parse_docx(FIXTURES / "mutual-to-stock-application-for-conversion.docx")
+
+        # Find a heading
+        heading_idx = None
+        for i, b in enumerate(src.body):
+            if type(b).__name__ == "Heading":
+                heading_idx = i
+                break
+        assert heading_idx is not None, "No heading found in fixture"
+
+        # Replace the heading
+        new_heading = Heading(depth=1, children=(Text(value="MODIFIED HEADING TEXT"),))
+        body_list = list(src.body)
+        body_list[heading_idx] = new_heading
+        modified = src.model_copy(update={"body": tuple(body_list)})
+
+        out = tmp_path / "heading_mod.docx"
+        write_docx(modified, out)
+        reloaded = parse_docx(out)
+        rt_text = serialize_text(reloaded)
+
+        assert "MODIFIED HEADING TEXT" in rt_text
+
+    def test_insert_table_into_existing(self, tmp_path: Path) -> None:
+        """Insert a new table into a parsed document and verify it persists."""
+        src = parse_docx(FIXTURES / "MultiParagraphSample.docx")
+
+        table = Table(
+            head=TableSection(
+                rows=(
+                    Row(
+                        cells=(
+                            Cell(content=(Paragraph(children=(Text(value="Header1"),)),)),
+                            Cell(content=(Paragraph(children=(Text(value="Header2"),)),)),
+                        )
+                    ),
+                )
+            ),
+            bodies=(
+                TableSection(
+                    rows=(
+                        Row(
+                            cells=(
+                                Cell(content=(Paragraph(children=(Text(value="Val1"),)),)),
+                                Cell(content=(Paragraph(children=(Text(value="Val2"),)),)),
+                            )
+                        ),
+                    )
+                ),
+            ),
+        )
+        new_body = (*src.body, table)
+        modified = src.model_copy(update={"body": new_body})
+
+        out = tmp_path / "with_table.docx"
+        write_docx(modified, out)
+        reloaded = parse_docx(out)
+        rt_text = serialize_text(reloaded)
+
+        assert "Header1" in rt_text
+        assert "Val1" in rt_text
+
+    def test_modify_preserves_other_content(self, tmp_path: Path) -> None:
+        """Modifying one block must not corrupt the rest of the document."""
+        src = parse_docx(FIXTURES / "bcfp_consumer-rights-summary_2018-09.docx")
+        orig_text = serialize_text(src)
+        orig_words = set(orig_text.lower().split())
+
+        # Replace first block only
+        replacement = Paragraph(children=(Text(value="INSERTED MARKER"),))
+        new_body = (replacement, *src.body[1:])
+        modified = src.model_copy(update={"body": new_body})
+
+        out = tmp_path / "preserves.docx"
+        write_docx(modified, out)
+        reloaded = parse_docx(out)
+        rt_text = serialize_text(reloaded)
+        rt_words = set(rt_text.lower().split())
+
+        assert "INSERTED MARKER" in rt_text
+        # All words from blocks[1:] should still be present
+        # (minus block 0's words, plus our marker)
+        first_block_words = set(
+            serialize_text(src.model_copy(update={"body": src.body[:1]})).lower().split()
+        )
+        remaining_orig = orig_words - first_block_words
+        if remaining_orig:
+            overlap = len(remaining_orig & rt_words) / len(remaining_orig)
+            assert overlap >= 0.95, f"Only {overlap:.1%} of non-replaced content survived"
+
 
 # ---------------------------------------------------------------------------
 # Style round-trip tests (from kelvin-office TestStyleRoundTrip)
@@ -516,6 +710,63 @@ class TestNumberingRoundTrip:
         rt_text = serialize_text(doc2)
         assert "Step 1" in rt_text
         assert "Step 2" in rt_text
+        # Reader should detect ordered list type
+        ordered_lists = [b for b in doc2.body if type(b).__name__ == "OrderedList"]
+        assert len(ordered_lists) >= 1, (
+            f"Expected OrderedList block, got: {[type(b).__name__ for b in doc2.body]}"
+        )
+
+    def test_mixed_lists_roundtrip(self, tmp_path: Path) -> None:
+        """Bullet + ordered lists in same document survive round-trip."""
+        doc = ContentDocument(
+            metadata=DocumentMetadata(title=""),
+            body=(
+                BulletList(
+                    children=(ListItem(children=(Paragraph(children=(Text(value="Bullet X"),)),)),)
+                ),
+                OrderedList(
+                    children=(ListItem(children=(Paragraph(children=(Text(value="Num Y"),)),)),)
+                ),
+            ),
+        )
+        out = tmp_path / "mixed_rt.docx"
+        write_docx(doc, out)
+        doc2 = parse_docx(out)
+        rt_text = serialize_text(doc2)
+        assert "Bullet X" in rt_text
+        assert "Num Y" in rt_text
+        block_types = [type(b).__name__ for b in doc2.body]
+        assert "BulletList" in block_types
+        assert "OrderedList" in block_types
+
+    def test_list_with_formatted_items_roundtrip(self, tmp_path: Path) -> None:
+        """List items with bold/italic text survive round-trip."""
+        doc = ContentDocument(
+            metadata=DocumentMetadata(title=""),
+            body=(
+                BulletList(
+                    children=(
+                        ListItem(
+                            children=(
+                                Paragraph(
+                                    children=(
+                                        Text(value="Normal and "),
+                                        Strong(children=(Text(value="bold"),)),
+                                        Text(value=" text"),
+                                    )
+                                ),
+                            )
+                        ),
+                    )
+                ),
+            ),
+        )
+        out = tmp_path / "fmt_list_rt.docx"
+        write_docx(doc, out)
+        doc2 = parse_docx(out)
+        rt_text = serialize_text(doc2)
+        assert "Normal and" in rt_text
+        assert "bold" in rt_text
 
     def test_numbering_xml_has_abstract_and_num(self) -> None:
         """numbering.xml must contain abstractNum and num elements."""
