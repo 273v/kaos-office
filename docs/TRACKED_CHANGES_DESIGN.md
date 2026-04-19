@@ -1,8 +1,26 @@
 # Tracked Changes / Redline Support — Design Options
 
 **Created**: 2026-04-18
-**Status**: Design discussion — no option selected yet
+**Status**: Option 1 selected. Core read-path + typed API + transforms implemented; write-path pending on DOCX Phase 3.
 **Scope**: kaos-content AST model + kaos-office DOCX reader/writer
+
+## Implementation Status (2026-04-18)
+
+Option 1 (Span/Div containers) is in. Shipped:
+- `AnnotationType.TRACKED_CHANGE` (kaos-content)
+- `parse_docx(path, track_changes=True)` — reader wraps revisions in Span/Div
+- `serialize_text/markdown/html(doc, view="final"|"original"|"markup")`
+- `kaos_content.revision.Revision` / `Revisions` typed wrapper API
+- `kaos_content.revision.accept / reject / accept_all / reject_all`
+- `kaos_content.revision.accept_by_author / reject_by_author`
+- `kaos_content.revision.at_time(doc, t)` — the time machine
+
+End-to-end validated on the Toro 2022 Term Loan - Redline v1 fixture.
+
+Outstanding:
+- `write_docx` emission of `w:ins` / `w:del` XML from rev-* Span/Div (task #253, blocked on #246)
+- `word/comments.xml` write-back (task #246)
+- Authoring transforms `insert / delete / replace` (task #257)
 
 ---
 
