@@ -234,17 +234,20 @@ class TestRoundTrip:
         src, dst = self._roundtrip("payment-report-07-01-20-thru-07-15-20.xlsx", tmp_path)
         assert len(dst.tables) == len(src.tables)
         assert len(dst.tables[0].columns) == len(src.tables[0].columns)
-        # Writer drops all-None rows; allow small row count difference
-        assert abs(len(dst.tables[0].rows) - len(src.tables[0].rows)) <= 2
+        # All rows (including empty separator rows) now survive round-trip.
+        assert len(dst.tables[0].rows) == len(src.tables[0].rows)
 
     def test_cbs_multi_sheet(self, tmp_path: Path) -> None:
         src, dst = self._roundtrip("CBS-BNSF-2015-Q4.xlsx", tmp_path)
         assert len(dst.tables) == len(src.tables)
-        # CBS has all-None separator rows that the writer drops; verify
-        # non-empty content is preserved (column counts, sheet count)
+        # CBS has all-None separator rows; all now survive round-trip.
         for i in range(len(src.tables)):
             assert len(dst.tables[i].columns) == len(src.tables[i].columns), (
                 f"Sheet {i}: column count mismatch"
+            )
+            assert len(dst.tables[i].rows) == len(src.tables[i].rows), (
+                f"Sheet {i}: row count mismatch "
+                f"(src={len(src.tables[i].rows)} dst={len(dst.tables[i].rows)})"
             )
 
     def test_ppp_large(self, tmp_path: Path) -> None:

@@ -227,8 +227,11 @@ def _parse_sheet(
                 if f_el is not None and f_el.text:
                     formulas[ref] = f"={f_el.text}"
 
-        if cells:
-            all_rows.append((row_num, cells))
+        # Preserve empty rows (``<row>`` elements with no ``<c>`` children).
+        # Real-world spreadsheets rely on blank separator rows for readability
+        # (e.g. CBS-BNSF, payment-report fixtures) and dropping them breaks
+        # round-trip fidelity.
+        all_rows.append((row_num, cells))
 
     if not all_rows:
         return Table(name=name)
