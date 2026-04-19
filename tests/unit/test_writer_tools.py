@@ -219,3 +219,75 @@ class TestRegisterIncludesWriters:
         assert "kaos-office-write-docx" in names
         assert "kaos-office-write-pptx" in names
         assert "kaos-office-write-xlsx" in names
+
+
+class TestWriterArtifactRegistration:
+    """When a runtime is available, writer tools also register output as an artifact."""
+
+    @pytest.mark.asyncio
+    async def test_docx_writer_registers_artifact(
+        self, simple_content_doc: ContentDocument, tmp_path: Path
+    ) -> None:
+        from kaos_core import KaosContext, KaosRuntime
+
+        runtime = KaosRuntime.default()
+        context = KaosContext.create_test_context()
+        context.runtime = runtime
+
+        out = tmp_path / "out.docx"
+        tool = WriteDocxTool()
+        result = await tool.execute(
+            {
+                "document_json": simple_content_doc.model_dump_json(),
+                "output_path": str(out),
+            },
+            context=context,
+        )
+        assert result.isError is False, result.content
+        structured = result.require_structured()
+        assert "artifact_id" in structured
+        assert structured["artifact_id"]
+        assert structured["body_uri"].startswith("kaos://artifacts/")
+        # Local file is still written
+        assert out.exists()
+
+    @pytest.mark.asyncio
+    async def test_docx_writer_without_runtime_has_no_artifact_fields(
+        self, simple_content_doc: ContentDocument, tmp_path: Path
+    ) -> None:
+        out = tmp_path / "out.docx"
+        tool = WriteDocxTool()
+        result = await tool.execute(
+            {
+                "document_json": simple_content_doc.model_dump_json(),
+                "output_path": str(out),
+            }
+        )
+        assert result.isError is False
+        structured = result.require_structured()
+        assert "artifact_id" not in structured
+        assert "body_uri" not in structured
+
+    @pytest.mark.asyncio
+    async def test_xlsx_writer_registers_artifact(
+        self, simple_tabular_doc: TabularDocument, tmp_path: Path
+    ) -> None:
+        from kaos_core import KaosContext, KaosRuntime
+
+        runtime = KaosRuntime.default()
+        context = KaosContext.create_test_context()
+        context.runtime = runtime
+
+        out = tmp_path / "out.xlsx"
+        tool = WriteXlsxTool()
+        result = await tool.execute(
+            {
+                "document_json": simple_tabular_doc.model_dump_json(),
+                "output_path": str(out),
+            },
+            context=context,
+        )
+        assert result.isError is False, result.content
+        structured = result.require_structured()
+        assert structured.get("artifact_id")
+        assert structured.get("body_uri", "").startswith("kaos://artifacts/")

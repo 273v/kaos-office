@@ -1084,6 +1084,54 @@ _WRITER_INPUT_SCHEMA_COMMON: list[ParameterSchema] = [
 ]
 
 
+_FORMAT_MIME: dict[str, str] = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+
+async def _register_output_as_artifact(
+    written_path: Path,
+    format_name: str,
+    context: KaosContext | None,
+) -> dict[str, Any] | None:
+    """Copy the just-written file into the VFS and register as an artifact.
+
+    Returns ``{"artifact_id": ..., "body_uri": ..., "manifest_uri": ...}`` on
+    success, or ``None`` when no runtime is available or registration fails.
+    Registration failures are silent (the local file is the source of truth);
+    the returned dict is advisory metadata for chaining into other MCP tools.
+    """
+    if context is None or context.runtime is None:
+        return None
+    try:
+        from kaos_core.artifacts.models import ArtifactRole
+
+        data = written_path.read_bytes()
+        vfs_path = f"office_output/{written_path.name}"
+        ctx_path = context.get_vfs_path(vfs_path)
+        await ctx_path.write_bytes(data)
+        manifest = await context.runtime.artifacts.create_from_path(
+            vfs_path,
+            context_id=context.session_id,
+            session_id=context.session_id,
+            name=written_path.stem,
+            mime_type=_FORMAT_MIME.get(format_name),
+            role=ArtifactRole.BODY,
+            provenance={"format": format_name, "source_path": str(written_path)},
+        )
+    except Exception:
+        logger = __import__("kaos_core.logging", fromlist=["get_logger"]).get_logger(__name__)
+        logger.debug("Failed to register output as artifact", exc_info=True)
+        return None
+    return {
+        "artifact_id": manifest.artifact_id,
+        "body_uri": manifest.body_uri,
+        "manifest_uri": f"kaos://artifacts/{manifest.artifact_id}/manifest",
+    }
+
+
 def _write_success_result(
     written_path: Path,
     format_name: str,
@@ -1141,11 +1189,11 @@ class WriteDocxTool(KaosTool):
                 "Verify the ContentDocument has a `body` and a writable `output_path`."
             )
 
-        return _write_success_result(
-            out,
-            "docx",
-            {"block_count": len(doc.body)},
-        )
+        extra: dict[str, Any] = {"block_count": len(doc.body)}
+        artifact_meta = await _register_output_as_artifact(out, "docx", context)
+        if artifact_meta is not None:
+            extra.update(artifact_meta)
+        return _write_success_result(out, "docx", extra)
 
 
 class WritePptxTool(KaosTool):
@@ -1209,11 +1257,14 @@ class WritePptxTool(KaosTool):
                 "Verify the ContentDocument has a `body` and any `template_path` is valid."
             )
 
-        return _write_success_result(
-            out,
-            "pptx",
-            {"block_count": len(doc.body), "template_path": template_path},
-        )
+        extra: dict[str, Any] = {
+            "block_count": len(doc.body),
+            "template_path": template_path,
+        }
+        artifact_meta = await _register_output_as_artifact(out, "pptx", context)
+        if artifact_meta is not None:
+            extra.update(artifact_meta)
+        return _write_success_result(out, "pptx", extra)
 
 
 class WriteXlsxTool(KaosTool):
@@ -1257,11 +1308,11 @@ class WriteXlsxTool(KaosTool):
                 "Verify the TabularDocument has `tables` and a writable `output_path`."
             )
 
-        return _write_success_result(
-            out,
-            "xlsx",
-            {"table_count": len(doc.tables)},
-        )
+        extra: dict[str, Any] = {"table_count": len(doc.tables)}
+        artifact_meta = await _register_output_as_artifact(out, "xlsx", context)
+        if artifact_meta is not None:
+            extra.update(artifact_meta)
+        return _write_success_result(out, "xlsx", extra)
 
 
 def register_office_tools(runtime: KaosRuntime) -> int:
