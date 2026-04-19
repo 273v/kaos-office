@@ -92,9 +92,10 @@ Rust-adjacent:
 - Security: ZIP bomb detection, path traversal prevention, XML bomb protection via `lxml.etree.XMLParser(resolve_entities=False)`.
 - Follow the KAOS Python QA process: `ruff format`, `ruff check --fix`, `ty check`, `pytest`.
 - **New tests should use `kaos_content.shortcuts`** (`paragraph`, `heading`, `bold`, `italic`, `link`, `bullet_list`, `ordered_list`, `table_from_rows`) instead of nested `Paragraph(children=(Text(value=...),))` constructors. Existing tests stay verbose until they're touched for another reason — no blanket rewrite.
-- 14 MCP tools total (5 DOCX + 5 PPTX + 4 XLSX). Register with `register_office_tools(runtime)`.
-- All MCP tools use shared `_OFFICE_ANNOTATIONS` (readOnly, idempotent, !destructive, !openWorld).
+- 17 MCP tools total (5 DOCX read + 5 PPTX read + 4 XLSX read + 3 writers). Register with `register_office_tools(runtime)`.
+- Read tools use shared `_OFFICE_ANNOTATIONS` (readOnly, idempotent, !destructive, !openWorld).
+- Write tools (`WriteDocxTool`, `WritePptxTool`, `WriteXlsxTool`) use `_OFFICE_WRITE_ANNOTATIONS` (!readOnly, !idempotent, !destructive, openWorld). They accept either `document_json` (inline JSON) or `document_id` (artifact id loaded via `runtime.artifacts`) and refuse to overwrite `output_path` unless `force=true`.
 - Tool error messages must include recovery guidance (what went wrong + how to fix it + alternative tool).
 - `search_document()` is imported from kaos-content (canonical, shared with kaos-pdf and kaos-web).
-- CLI: 9 subcommands (3 DOCX + 3 PPTX + 3 XLSX).
+- CLI: 12 subcommands (3 DOCX read + 3 PPTX read + 3 XLSX read + `write-docx` + `write-pptx` + `write-xlsx`). Write commands accept a JSON file or `-` (stdin), write to a positional output path, and support `--force` / `--json` (and `--template` for `write-pptx`).
 - **Never add AGPL/GPL dependencies.** This is a proprietary codebase.
