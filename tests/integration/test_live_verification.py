@@ -198,6 +198,80 @@ class TestDocxLiveVerification:
         pdf = _convert_to_pdf(out, tmp_path)
         assert pdf.stat().st_size > 500
 
+    def test_phase4_headers_footers_page_setup_live(self, tmp_path: Path) -> None:
+        """DOCX Phase 4 — headers, footers and custom page geometry survive
+        LibreOffice. The conversion to PDF + text extraction via kaos-pdf is a
+        true cross-tool round-trip: if LibreOffice rejects our sectPr or can't
+        resolve the header/footer rels, this test fails.
+        """
+        from kaos_content.model.metadata import PageSetup
+        from kaos_pdf import extract_pdf
+
+        doc = ContentDocument(
+            metadata=DocumentMetadata(
+                title="Phase 4 Live Test",
+                page_setup=PageSetup(
+                    page_width_pt=612.0,
+                    page_height_pt=792.0,
+                    margin_top_pt=72.0,
+                    margin_bottom_pt=72.0,
+                    margin_left_pt=72.0,
+                    margin_right_pt=72.0,
+                    header_distance_pt=36.0,
+                    footer_distance_pt=36.0,
+                ),
+            ),
+            body=(
+                Heading(depth=1, children=(Text(value="Body Heading"),)),
+                Paragraph(
+                    children=(
+                        Text(
+                            value=(
+                                "Body paragraph one. " * 40
+                            ),
+                        ),
+                    )
+                ),
+                Paragraph(
+                    children=(
+                        Text(value="Body paragraph two with a marker BODYSENTINEL for confirmation."),
+                    )
+                ),
+            ),
+            headers={
+                "default": (
+                    Paragraph(children=(Text(value="HEADERSENTINEL: live-verified header"),)),
+                )
+            },
+            footers={
+                "default": (
+                    Paragraph(children=(Text(value="FOOTERSENTINEL: live-verified footer"),)),
+                )
+            },
+        )
+        out = tmp_path / "phase4.docx"
+        write_docx(doc, out)
+        pdf = _convert_to_pdf(out, tmp_path)
+        assert pdf.stat().st_size > 500
+
+        # Cross-tool round-trip: kaos-pdf extracts text from the PDF that
+        # LibreOffice rendered. The body + header + footer sentinels must all
+        # show up across the extracted pages.
+        extracted = extract_pdf(pdf)
+        from kaos_content.serializers.text import serialize_text
+
+        rendered_text = serialize_text(extracted)
+        assert "BODYSENTINEL" in rendered_text, (
+            "body text lost somewhere in write → LibreOffice → extract"
+        )
+        assert "HEADERSENTINEL" in rendered_text, (
+            "header didn't survive LibreOffice rendering — sectPr or header rel "
+            "may be malformed"
+        )
+        assert "FOOTERSENTINEL" in rendered_text, (
+            "footer didn't survive LibreOffice rendering"
+        )
+
 
 # ---------------------------------------------------------------------------
 # XLSX
