@@ -17,6 +17,7 @@ from pathlib import Path
 from kaos_content import ContentDocument
 from kaos_content.builders import DocumentBuilder
 from kaos_content.model.annotation import AnnotationType
+from kaos_content.model.attr import Attr
 from kaos_content.model.blocks import Table
 from kaos_content.model.inlines import (
     Emphasis,
@@ -24,6 +25,7 @@ from kaos_content.model.inlines import (
     Inline,
     LineBreak,
     Link,
+    Span,
     Strikethrough,
     Strong,
     Subscript,
@@ -53,6 +55,7 @@ from kaos_office.ooxml.namespace import (
     W_BR,
     W_COMMENT,
     W_DEL,
+    W_DEL_TEXT,
     W_DRAWING,
     W_ENDNOTE,
     W_ENDNOTE_REFERENCE,
@@ -94,6 +97,7 @@ from kaos_office.ooxml.namespace import (
     W_VMERGE,
     WP,
     A,
+    W,
     qn,
 )
 from kaos_office.opc.package import OPCPackage
@@ -137,12 +141,25 @@ class ParseContext:
     # Bookmark tracking for annotations
     bookmarks: dict[str, str] = field(default_factory=dict)  # id → name
 
+    # Revision tracking mode — when True, w:ins/w:del/w:moveFrom/w:moveTo
+    # content is wrapped in Span/Div with ``rev-*`` classes and a
+    # TRACKED_CHANGE annotation is emitted with metadata.
+    track_changes: bool = False
 
-def parse_docx(path: str | Path) -> ContentDocument:
+
+def parse_docx(path: str | Path, *, track_changes: bool = False) -> ContentDocument:
     """Parse a DOCX file into a ContentDocument.
 
     Args:
         path: Path to the .docx file.
+        track_changes: When True, preserve tracked changes (``w:ins``,
+            ``w:del``, ``w:moveFrom``, ``w:moveTo``) by wrapping content
+            in ``Span`` / ``Div`` with ``rev-ins`` / ``rev-del`` /
+            ``rev-move-from`` / ``rev-move-to`` classes and emitting
+            ``AnnotationType.TRACKED_CHANGE`` annotations with the
+            author / date / revision-id metadata. When False (default),
+            the legacy "accept insertions, skip deletions" behavior
+            applies and all revision metadata is discarded.
 
     Returns:
         ContentDocument with the extracted content.
@@ -241,6 +258,7 @@ def parse_docx(path: str | Path) -> ContentDocument:
             footnotes=footnotes,
             endnotes=endnotes,
             comments=comments,
+            track_changes=track_changes,
         )
 
         for child in body:
@@ -256,6 +274,78 @@ def parse_docx(path: str | Path) -> ContentDocument:
         _add_comment_annotations(ctx)
 
         return builder.build()
+
+
+# --------------------------------------------------------------------------
+# Revision (tracked changes) helpers
+# --------------------------------------------------------------------------
+
+# Namespaced attribute names on revision elements (w:ins, w:del, w:moveFrom,
+# w:moveTo). Cached at module load for O(1) access.
+_W_AUTHOR_ATTR = qn(W, "author")
+_W_DATE_ATTR = qn(W, "date")
+_W_ID_ATTR = qn(W, "id")
+_W_NAME_ATTR = qn(W, "name")
+
+# Revision wrapper class names on Span/Div.
+_REV_INS = "rev-ins"
+_REV_DEL = "rev-del"
+_REV_MOVE_FROM = "rev-move-from"
+_REV_MOVE_TO = "rev-move-to"
+
+# Map revision OOXML tag → (class, change_type)
+_REV_TAG_MAP = {
+    W_INS: (_REV_INS, "insertion"),
+    W_DEL: (_REV_DEL, "deletion"),
+    W_MOVE_FROM: (_REV_MOVE_FROM, "move_from"),
+    W_MOVE_TO: (_REV_MOVE_TO, "move_to"),
+}
+
+
+def _revision_metadata(el: etree._Element) -> dict[str, str]:
+    """Extract revision metadata (id, author, date, move name) from an element."""
+    kv: dict[str, str] = {}
+    rev_id = el.get(_W_ID_ATTR)
+    if rev_id:
+        kv["rev:id"] = rev_id
+    author = el.get(_W_AUTHOR_ATTR)
+    if author:
+        kv["rev:author"] = author
+    date = el.get(_W_DATE_ATTR)
+    if date:
+        kv["rev:date"] = date
+    move_name = el.get(_W_NAME_ATTR)
+    if move_name:
+        kv["rev:move-name"] = move_name
+    return kv
+
+
+def _emit_revision_annotation(
+    ctx: ParseContext,
+    *,
+    change_type: str,
+    metadata: dict[str, str],
+) -> None:
+    """Emit a TRACKED_CHANGE annotation for a revision.
+
+    Targets are intentionally empty at parse time; ``node_ref`` resolution
+    via ``NodeIndex`` is a post-build concern. Downstream code can match
+    annotations to Span/Div nodes by ``rev:id`` in ``Attr.kv``.
+    """
+    body: dict[str, object] = {"change_type": change_type}
+    if "rev:id" in metadata:
+        body["revision_id"] = metadata["rev:id"]
+    if "rev:author" in metadata:
+        body["author"] = metadata["rev:author"]
+    if "rev:date" in metadata:
+        body["date"] = metadata["rev:date"]
+    if "rev:move-name" in metadata:
+        body["move_name"] = metadata["rev:move-name"]
+    ctx.builder.annotate(
+        AnnotationType.TRACKED_CHANGE,
+        targets=[],
+        body=body,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -287,19 +377,78 @@ def _process_body_child(el: etree._Element, ctx: ParseContext) -> None:
         bm_name = el.get(qn("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "name"))
         if bm_id and bm_name:
             ctx.bookmarks[bm_id] = bm_name
-    elif tag == W_INS:
-        # Track change: insertion at body level — include content
-        for child in el:
-            _process_body_child(child, ctx)
-    elif tag == W_DEL:
-        pass  # Track change: deletion at body level — skip
-    elif tag == W_MOVE_TO:
-        # Accept move — include the moveTo content
-        for child in el:
-            _process_body_child(child, ctx)
-    elif tag == W_MOVE_FROM:
-        pass  # Skip moveFrom content (it's in moveTo now)
+    elif tag in _REV_TAG_MAP:
+        _handle_body_revision(el, ctx, tag)
     # Unknown elements silently skipped
+
+
+def _handle_body_revision(el: etree._Element, ctx: ParseContext, tag: str) -> None:
+    """Handle a block-level revision element (w:ins, w:del, w:moveFrom, w:moveTo).
+
+    When ``ctx.track_changes`` is True, wrap the inner blocks in a ``Div``
+    with ``rev-*`` classes and metadata, and emit a TRACKED_CHANGE
+    annotation. Otherwise apply the legacy flatten behavior: include
+    insertions and moveTo content, skip deletions and moveFrom content.
+    """
+    rev_class, change_type = _REV_TAG_MAP[tag]
+
+    if not ctx.track_changes:
+        # Legacy behavior: include ins/moveTo, skip del/moveFrom
+        if tag in (W_INS, W_MOVE_TO):
+            for child in el:
+                _process_body_child(child, ctx)
+        return
+
+    metadata = _revision_metadata(el)
+    ctx.builder.begin_div(classes=(rev_class,), kv=metadata)
+    for child in el:
+        _process_body_child(child, ctx)
+    ctx.builder.end()
+    _emit_revision_annotation(ctx, change_type=change_type, metadata=metadata)
+
+
+def _handle_inline_revision(
+    el: etree._Element,
+    ctx: ParseContext,
+    tag: str,
+    out: list[Inline],
+) -> None:
+    """Handle an inline-level revision element (w:ins, w:del, w:moveFrom, w:moveTo).
+
+    When ``ctx.track_changes`` is True, wrap the inner runs in a ``Span``
+    with ``rev-*`` classes and metadata, and emit a TRACKED_CHANGE
+    annotation. Otherwise apply the legacy flatten behavior.
+    """
+    rev_class, change_type = _REV_TAG_MAP[tag]
+
+    if not ctx.track_changes:
+        # Legacy behavior: include ins/moveTo runs, skip del/moveFrom
+        if tag in (W_INS, W_MOVE_TO):
+            for sub in el:
+                if sub.tag == W_R:
+                    _process_run(sub, ctx, out)
+                elif sub.tag == W_HYPERLINK:
+                    _process_hyperlink(sub, ctx, out)
+        return
+
+    # Collect inner inlines into a local list so we can wrap them
+    inner: list[Inline] = []
+    for sub in el:
+        if sub.tag == W_R:
+            _process_run(sub, ctx, inner)
+        elif sub.tag == W_HYPERLINK:
+            _process_hyperlink(sub, ctx, inner)
+    if not inner:
+        return
+
+    metadata = _revision_metadata(el)
+    out.append(
+        Span(
+            children=tuple(inner),
+            attr=Attr(classes=(rev_class,), kv=metadata),
+        )
+    )
+    _emit_revision_annotation(ctx, change_type=change_type, metadata=metadata)
 
 
 # --------------------------------------------------------------------------
@@ -432,21 +581,8 @@ def _collect_inlines(para_el: etree._Element, ctx: ParseContext) -> list[Inline]
             _process_run(child, ctx, inlines)
         elif tag == W_HYPERLINK:
             _process_hyperlink(child, ctx, inlines)
-        elif tag == W_INS:
-            # Track change: insertion — include the content
-            for sub in child:
-                if sub.tag == W_R:
-                    _process_run(sub, ctx, inlines)
-                elif sub.tag == W_HYPERLINK:
-                    _process_hyperlink(sub, ctx, inlines)
-        elif tag == W_DEL:
-            pass  # Track change: deletion — skip content
-        elif tag == W_MOVE_TO:
-            for sub in child:
-                if sub.tag == W_R:
-                    _process_run(sub, ctx, inlines)
-        elif tag == W_MOVE_FROM:
-            pass  # Skip moveFrom
+        elif tag in _REV_TAG_MAP:
+            _handle_inline_revision(child, ctx, tag, inlines)
         elif tag == W_BOOKMARK_START:
             bm_id = child.get(W_ID)
             bm_name = child.get(
@@ -480,7 +616,7 @@ def _process_run(run_el: etree._Element, ctx: ParseContext, out: list[Inline]) -
     for child in run_el:
         tag = child.tag
 
-        if tag == W_T:
+        if tag in (W_T, W_DEL_TEXT):
             text = child.text or ""
             if not text:
                 continue
