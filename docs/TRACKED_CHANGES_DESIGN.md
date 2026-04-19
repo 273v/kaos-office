@@ -4,23 +4,37 @@
 **Status**: Option 1 selected. Core read-path + typed API + transforms implemented; write-path pending on DOCX Phase 3.
 **Scope**: kaos-content AST model + kaos-office DOCX reader/writer
 
-## Implementation Status (2026-04-18)
+## Implementation Status (2026-04-18, complete)
 
-Option 1 (Span/Div containers) is in. Shipped:
-- `AnnotationType.TRACKED_CHANGE` (kaos-content)
-- `parse_docx(path, track_changes=True)` — reader wraps revisions in Span/Div
+Option 1 (Span/Div containers) is fully shipped end-to-end. All four
+use cases are working and validated on real legal fixtures.
+
+**kaos-content**:
+- `AnnotationType.TRACKED_CHANGE`
+- `parse_docx(path, track_changes=True)` wraps revisions in Span/Div
 - `serialize_text/markdown/html(doc, view="final"|"original"|"markup")`
-- `kaos_content.revision.Revision` / `Revisions` typed wrapper API
-- `kaos_content.revision.accept / reject / accept_all / reject_all`
-- `kaos_content.revision.accept_by_author / reject_by_author`
-- `kaos_content.revision.at_time(doc, t)` — the time machine
+- `kaos_content.revision`:
+  - `Revision` / `Revisions` typed wrapper API
+  - `accept / reject / accept_all / reject_all`
+  - `accept_by_author / reject_by_author`
+  - `at_time(doc, t)` — time machine
+  - `make_inline_insertion / make_inline_deletion / make_block_insertion / make_block_deletion` — node constructors
+  - `append_block_insertion / insert_block_after / delete_block_at` — doc-level authoring helpers
 
-End-to-end validated on the Toro 2022 Term Loan - Redline v1 fixture.
+**kaos-office (DOCX writer)**:
+- `word/comments.xml` emission from `AnnotationType.COMMENT` annotations
+- `word/footnotes.xml` / `word/endnotes.xml` with required separator/continuation IDs
+- `FootnoteRef` → `w:footnoteReference` / `w:endnoteReference` runs
+- Proper `w:hyperlink` elements with relationship entries (dedup on URL)
+- `rev-*` Span/Div → `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` with `w:delText` for deletions
 
-Outstanding:
-- `write_docx` emission of `w:ins` / `w:del` XML from rev-* Span/Div (task #253, blocked on #246)
-- `word/comments.xml` write-back (task #246)
-- Authoring transforms `insert / delete / replace` (task #257)
+**End-to-end validated**:
+- Toro 2022 Term Loan - Redline v1 (12 revisions): round-trip with 0 metadata mismatches, 100% markup-view word overlap
+- Toro 2022 Term Loan - Comments (5 comments): round-trip with all author/date/text preserved
+- Footnote.docx: round-trip with separator+continuation markers emitted
+- UC4 demo: agent authors redlines on clean CFPB summary → write → re-parse (2 revisions recovered) → accept_all → clean final doc
+
+**Use case coverage**: UC1 ✓ UC2 ✓ UC3 ✓ UC4 ✓
 
 ---
 
