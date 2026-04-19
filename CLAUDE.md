@@ -45,7 +45,7 @@ Rust-adjacent:
 - **Phase 4 pending**: headers, footers, sections, page setup, images (writer — reader captures dimensions).
 - DOCX reader populates `Image.width` / `Image.height` from `wp:extent cx`/`cy` (EMU → points via `kaos_office.ooxml.namespace.emu_to_pt`). PPTX reader/writer round-trip dimensions through `shape.width` / `shape.height` for picture shapes; writer falls back to `Inches(8.0)` width when unset. Convention: points (1/72 in).
 - **Phase 5 pending**: MCP tools, CLI integration.
-- **Known gap vs. kelvin-office**: kelvin-office has 18 DOCX test fixtures and tests modification round-trips (load → edit → save → reload → verify edit). We have 6 fixtures and only test identity round-trips.
+- Round-trip coverage (`tests/unit/test_docx_writer.py`): 18 DOCX fixtures; `TestRoundTrip` (identity), `TestModificationRoundTrip` (parse → edit → write → re-parse → verify edit + untouched-content preservation), `TestStyleRoundTrip` (heading style + outlineLvl survive), `TestNumberingRoundTrip` (bullet + ordered list preservation).
 
 ## XLSX Generation (complete)
 - Uses **lxml** for XML serialization — native SpreadsheetML, no xlsxwriter dependency for production.
