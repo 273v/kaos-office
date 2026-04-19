@@ -117,6 +117,42 @@ def main(argv: list[str] | None = None) -> None:
         "--json", dest="json_output", action="store_true", help="JSON envelope"
     )
 
+    # --- write-docx / write-pptx / write-xlsx ---
+    for subcmd, help_ext, fmt_ext in (
+        ("write-docx", "DOCX", ".docx"),
+        ("write-pptx", "PPTX", ".pptx"),
+        ("write-xlsx", "XLSX", ".xlsx"),
+    ):
+        p_write = subparsers.add_parser(
+            subcmd,
+            help=f"Serialize a JSON document to a {help_ext} file",
+        )
+        p_write.add_argument(
+            "input",
+            help=(
+                f"Path to a JSON file produced by the corresponding parse command "
+                f"(use '-' to read JSON from stdin). Must parse as a "
+                f"{'TabularDocument' if subcmd == 'write-xlsx' else 'ContentDocument'}."
+            ),
+        )
+        p_write.add_argument(
+            "output",
+            help=f"Output file path (suffix {fmt_ext} recommended)",
+        )
+        p_write.add_argument(
+            "--force",
+            action="store_true",
+            help="Overwrite the output path if it already exists",
+        )
+        if subcmd == "write-pptx":
+            p_write.add_argument(
+                "--template",
+                help="Optional PPTX template for branded output",
+            )
+        p_write.add_argument(
+            "--json", dest="json_output", action="store_true", help="JSON envelope"
+        )
+
     args = parser.parse_args(argv)
 
     handlers = {
@@ -129,6 +165,9 @@ def main(argv: list[str] | None = None) -> None:
         "xlsx-extract": _cmd_xlsx_extract,
         "xlsx-sheets": _cmd_xlsx_sheets,
         "xlsx-sheet": _cmd_xlsx_sheet,
+        "write-docx": _cmd_write_docx,
+        "write-pptx": _cmd_write_pptx,
+        "write-xlsx": _cmd_write_xlsx,
     }
     try:
         handlers[args.command](args)
@@ -460,3 +499,82 @@ def _cmd_xlsx_sheet(args: argparse.Namespace) -> None:
         "markdown": serialize_markdown_table,
     }
     print(formatters[args.format](table), end="")
+
+
+# --- Write command handlers ---
+
+
+def _read_json_input(source: str) -> str:
+    """Read raw JSON from a file path or stdin (``"-"``)."""
+    if source == "-":
+        return sys.stdin.read()
+    return _validate_file(source).read_text(encoding="utf-8")
+
+
+def _check_write_target(output: str, force: bool) -> Path:
+    out = Path(output)
+    if out.exists() and not force:
+        raise FileExistsError(
+            f"Refusing to overwrite existing file: {out}. "
+            "Pass --force to overwrite, or choose a different output path."
+        )
+    return out
+
+
+def _emit_write_envelope(args: argparse.Namespace, out: Path, fmt: str, **extra: object) -> None:
+    if not args.json_output:
+        print(f"Wrote {out.stat().st_size} bytes to {out} ({fmt}).", file=sys.stderr)
+        return
+    _json_out(
+        {
+            "command": args.command,
+            "input": args.input,
+            "output": str(out),
+            "format": fmt,
+            "size_bytes": out.stat().st_size,
+            **extra,
+        }
+    )
+
+
+def _cmd_write_docx(args: argparse.Namespace) -> None:
+    """Serialize a ContentDocument JSON to a DOCX file."""
+    from kaos_content.model.document import ContentDocument
+
+    from kaos_office.docx.writer import write_docx
+
+    raw = _read_json_input(args.input)
+    doc = ContentDocument.model_validate_json(raw)
+    out = _check_write_target(args.output, args.force)
+    write_docx(doc, out)
+    _emit_write_envelope(args, out, "docx", block_count=len(doc.body))
+
+
+def _cmd_write_pptx(args: argparse.Namespace) -> None:
+    """Serialize a ContentDocument JSON to a PPTX file."""
+    from kaos_content.model.document import ContentDocument
+
+    from kaos_office.pptx.writer import write_pptx
+
+    raw = _read_json_input(args.input)
+    doc = ContentDocument.model_validate_json(raw)
+    out = _check_write_target(args.output, args.force)
+
+    template = getattr(args, "template", None)
+    if template:
+        _validate_file(template)
+    write_pptx(doc, out, template=template)
+    _emit_write_envelope(args, out, "pptx", block_count=len(doc.body), template=template)
+
+
+def _cmd_write_xlsx(args: argparse.Namespace) -> None:
+    """Serialize a TabularDocument JSON to an XLSX file."""
+    from kaos_content.model.tabular import TabularDocument
+
+    from kaos_office.xlsx.writer import write_xlsx
+
+    raw = _read_json_input(args.input)
+    doc = TabularDocument.model_validate_json(raw)
+    out = _check_write_target(args.output, args.force)
+    write_xlsx(doc, out)
+    _emit_write_envelope(args, out, "xlsx", table_count=len(doc.tables))
