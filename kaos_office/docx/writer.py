@@ -225,6 +225,7 @@ def _serialize_block(parent: etree._Element, block: Any, ctx: _WriteContext) -> 
         BlockQuote,
         BulletList,
         CodeBlock,
+        Div,
         Heading,
         OrderedList,
         PageBreak,
@@ -233,6 +234,9 @@ def _serialize_block(parent: etree._Element, block: Any, ctx: _WriteContext) -> 
         ThematicBreak,
     )
 
+    if isinstance(block, Div) and _is_revision(block):
+        _serialize_revision_div(parent, block, ctx)
+        return
     if isinstance(block, Paragraph):
         _serialize_paragraph(parent, block, ctx)
     elif isinstance(block, Heading):
@@ -411,11 +415,15 @@ def _serialize_inline(parent: etree._Element, inline: Any, ctx: _WriteContext) -
         LineBreak,
         Link,
         SoftBreak,
+        Span,
         Strikethrough,
         Strong,
         Text,
     )
 
+    if isinstance(inline, Span) and _is_revision(inline):
+        _serialize_revision_span(parent, inline, ctx)
+        return
     if isinstance(inline, Text):
         r = etree.SubElement(parent, W_R)
         t = etree.SubElement(r, W_T)
@@ -697,6 +705,102 @@ def _serialize_footnote_ref(parent: etree._Element, ref: Any, ctx: _WriteContext
     rpr = etree.SubElement(r, W_RPR)
     etree.SubElement(rpr, qn(W, "rStyle"), **{qn(W, "val"): style})
     etree.SubElement(r, qn(W, reference_tag), **{qn(W, "id"): note_id})
+
+
+# ---------------------------------------------------------------------------
+# Tracked-change revision serialization (Phase D)
+# ---------------------------------------------------------------------------
+
+# Map rev-* class → (OOXML element tag name for inline/block revisions)
+_REV_CLASS_TO_TAG: dict[str, str] = {
+    "rev-ins": "ins",
+    "rev-del": "del",
+    "rev-move-from": "moveFrom",
+    "rev-move-to": "moveTo",
+}
+
+
+def _is_revision(node: Any) -> bool:
+    """Whether a node has one of the rev-* classes on its Attr.classes."""
+    attr = getattr(node, "attr", None)
+    if attr is None:
+        return False
+    return any(cls in _REV_CLASS_TO_TAG for cls in getattr(attr, "classes", ()) or ())
+
+
+def _revision_tag(node: Any) -> tuple[str, str] | None:
+    """Return (OOXML tag name, rev class) for a revision-marked node, or None."""
+    attr = getattr(node, "attr", None)
+    if attr is None:
+        return None
+    for cls in getattr(attr, "classes", ()) or ():
+        if cls in _REV_CLASS_TO_TAG:
+            return _REV_CLASS_TO_TAG[cls], cls
+    return None
+
+
+def _revision_wrapper_attrs(node: Any) -> dict[str, str]:
+    """Build w:id / w:author / w:date / w:name attributes from Attr.kv."""
+    kv = (getattr(node.attr, "kv", None) or {}) if getattr(node, "attr", None) else {}
+    attrs: dict[str, str] = {}
+    if "rev:id" in kv:
+        attrs[qn(W, "id")] = str(kv["rev:id"])
+    if "rev:author" in kv:
+        attrs[qn(W, "author")] = str(kv["rev:author"])
+    if "rev:date" in kv:
+        attrs[qn(W, "date")] = str(kv["rev:date"])
+    if "rev:move-name" in kv:
+        attrs[qn(W, "name")] = str(kv["rev:move-name"])
+    return attrs
+
+
+def _serialize_revision_span(parent: etree._Element, span: Any, ctx: _WriteContext) -> None:
+    """Emit a <w:ins> / <w:del> / <w:moveFrom> / <w:moveTo> wrapper around runs.
+
+    The wrapper carries revision metadata (id, author, date, move name).
+    For ``rev-del`` / ``rev-move-from`` wrappers, the contained text nodes
+    are post-processed so their ``<w:t>`` becomes ``<w:delText>`` per
+    OOXML §17.16.2 (though most Word readers accept either).
+    """
+    tag_info = _revision_tag(span)
+    if tag_info is None:
+        # Fallback: just emit children as if the Span weren't there
+        for child in getattr(span, "children", ()):
+            _serialize_inline(parent, child, ctx)
+        return
+
+    tag, rev_class = tag_info
+    wrapper = etree.SubElement(parent, qn(W, tag), **_revision_wrapper_attrs(span))
+    for child in getattr(span, "children", ()):
+        _serialize_inline(wrapper, child, ctx)
+
+    # OOXML spec: deleted text runs use <w:delText> instead of <w:t>.
+    # Rename for strict compliance.
+    if rev_class in ("rev-del", "rev-move-from"):
+        for t_el in wrapper.findall(f".//{W_T}"):
+            t_el.tag = qn(W, "delText")
+
+
+def _serialize_revision_div(parent: etree._Element, div: Any, ctx: _WriteContext) -> None:
+    """Emit a block-level revision wrapper at the body level.
+
+    The Div's children are block nodes that must be serialized inside the
+    wrapper. The wrapper appears as a direct body child.
+    """
+    tag_info = _revision_tag(div)
+    if tag_info is None:
+        for child in getattr(div, "children", ()):
+            _serialize_block(parent, child, ctx)
+        return
+
+    tag, rev_class = tag_info
+    wrapper = etree.SubElement(parent, qn(W, tag), **_revision_wrapper_attrs(div))
+    for child in getattr(div, "children", ()):
+        _serialize_block(wrapper, child, ctx)
+
+    if rev_class in ("rev-del", "rev-move-from"):
+        for t_el in wrapper.findall(f".//{W_T}"):
+            t_el.tag = qn(W, "delText")
 
 
 # ---------------------------------------------------------------------------
