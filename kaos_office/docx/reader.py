@@ -33,7 +33,7 @@ from kaos_content.model.inlines import (
     Text,
     Underline,
 )
-from kaos_content.model.metadata import PageSetup
+from kaos_content.model.metadata import PageSetup, Section, SectionBreakType
 from kaos_content.model.table import Cell, Row, TableSection
 from kaos_core.logging import get_logger
 from lxml import etree  # ty: ignore[unresolved-import]
@@ -155,6 +155,13 @@ class ParseContext:
     # content is wrapped in Span/Div with ``rev-*`` classes and a
     # TRACKED_CHANGE annotation is emitted with metadata.
     track_changes: bool = False
+
+    # Phase 4C: sectPr elements discovered during body walk, captured at
+    # the point they close a section so the final block index lines up
+    # with whatever the builder actually emitted. Each entry is
+    # ``(block_count_at_boundary, sectPr_element)``. Consumed after the
+    # walk by :func:`_build_sections`.
+    pending_sections: list[tuple[int, etree._Element]] = field(default_factory=list)
 
 
 def parse_docx(path: str | Path, *, track_changes: bool = False) -> ContentDocument:
@@ -295,6 +302,13 @@ def parse_docx(path: str | Path, *, track_changes: bool = False) -> ContentDocum
         if page_setup is not None:
             builder.set_metadata(page_setup=page_setup)
 
+        # Phase 4C: populate per-section layout from every <w:sectPr>
+        # captured during the body walk. Empty tuple means "implicit
+        # single section" and leaves doc.sections at its default.
+        sections = _build_sections(ctx.pending_sections)
+        if sections:
+            builder.set_sections(sections)
+
         return builder.build()
 
 
@@ -381,13 +395,26 @@ def _process_body_child(el: etree._Element, ctx: ParseContext) -> None:
 
     if tag == W_P:
         _handle_paragraph(el, ctx)
+        # Phase 4C: a paragraph may carry <w:pPr><w:sectPr/></w:pPr>,
+        # which closes a section at this block's position. Capture it
+        # *after* the paragraph is emitted so the block count reflects
+        # whatever _handle_paragraph produced (or didn't, for empty
+        # paragraphs). Final body-direct sectPr is handled in the
+        # W_SECTPR branch below.
+        ppr = el.find(W_PPR)
+        if ppr is not None:
+            inner_sect = ppr.find(W_SECTPR)
+            if inner_sect is not None:
+                ctx.pending_sections.append((len(ctx.builder._blocks), inner_sect))
     elif tag == W_TBL:
         _flush_open_lists(ctx)
         _handle_table(el, ctx)
     elif tag == W_SECTPR:
         _flush_open_lists(ctx)
-        # Section properties — emit page break for section boundaries
-        # (Could extract page size, margins for provenance in future)
+        # Body-direct sectPr is the final section's properties. Record
+        # it at the current block count so _build_sections can close
+        # the final section with end_block_index = len(body).
+        ctx.pending_sections.append((len(ctx.builder._blocks), el))
     elif tag == W_SDT:
         # Structured document tag — unwrap and process contents
         sdt_content = el.find(W_SDTCONTENT)
@@ -1001,44 +1028,37 @@ def _parse_headers_and_footers(
     return headers, footers
 
 
-def _parse_page_setup(body_el: etree._Element) -> PageSetup | None:
-    """Extract page size / margins from the body's final ``<w:sectPr>``.
-
-    OOXML allows multiple ``<w:sectPr>`` (one per section); the final one
-    at body end carries the document-level defaults. Returns a
-    :class:`~kaos_content.model.metadata.PageSetup` or ``None`` if no
-    section properties are present.
-    """
-    sect_prs = list(body_el.iter(W_SECTPR))
-    if not sect_prs:
+def _twips_attr(attr: etree._Element | None, name: str) -> float | None:
+    if attr is None:
         return None
-    sect = sect_prs[-1]
+    val = attr.get(qn(W, name))
+    if val is None:
+        return None
+    try:
+        return twips_to_pt(int(val))
+    except ValueError:
+        return None
 
-    def _twips(attr: etree._Element | None, name: str) -> float | None:
-        if attr is None:
-            return None
-        val = attr.get(qn(W, name))
-        if val is None:
-            return None
-        try:
-            return twips_to_pt(int(val))
-        except ValueError:
-            return None
 
+def _parse_page_setup_from_sect(sect: etree._Element) -> PageSetup | None:
+    """Extract page size / margins from a single ``<w:sectPr>`` element.
+
+    Returns ``None`` if every geometry field is absent, matching the
+    "no meaningful geometry to preserve" signal the caller uses.
+    """
     pg_sz = sect.find(W_PGSZ)
     pg_mar = sect.find(W_PGMAR)
 
     setup = PageSetup(
-        page_width_pt=_twips(pg_sz, "w"),
-        page_height_pt=_twips(pg_sz, "h"),
-        margin_top_pt=_twips(pg_mar, "top"),
-        margin_bottom_pt=_twips(pg_mar, "bottom"),
-        margin_left_pt=_twips(pg_mar, "left"),
-        margin_right_pt=_twips(pg_mar, "right"),
-        header_distance_pt=_twips(pg_mar, "header"),
-        footer_distance_pt=_twips(pg_mar, "footer"),
+        page_width_pt=_twips_attr(pg_sz, "w"),
+        page_height_pt=_twips_attr(pg_sz, "h"),
+        margin_top_pt=_twips_attr(pg_mar, "top"),
+        margin_bottom_pt=_twips_attr(pg_mar, "bottom"),
+        margin_left_pt=_twips_attr(pg_mar, "left"),
+        margin_right_pt=_twips_attr(pg_mar, "right"),
+        header_distance_pt=_twips_attr(pg_mar, "header"),
+        footer_distance_pt=_twips_attr(pg_mar, "footer"),
     )
-    # Return None if every field is None (nothing worth preserving)
     if all(
         v is None
         for v in (
@@ -1054,6 +1074,59 @@ def _parse_page_setup(body_el: etree._Element) -> PageSetup | None:
     ):
         return None
     return setup
+
+
+def _parse_break_type(sect: etree._Element) -> SectionBreakType:
+    """Extract ``<w:type w:val="..."/>`` — defaults to ``"nextPage"``.
+
+    OOXML omits ``w:type`` when the default applies; we emit it verbatim
+    for round-trip fidelity. Unknown values collapse to the default
+    rather than raising — new OOXML versions may extend the vocabulary
+    and we shouldn't fail-parse on that.
+    """
+    type_el = sect.find(qn(W, "type"))
+    if type_el is None:
+        return "nextPage"
+    val = type_el.get(qn(W, "val"))
+    if val in ("continuous", "nextPage", "nextColumn", "evenPage", "oddPage"):
+        return val
+    return "nextPage"
+
+
+def _parse_page_setup(body_el: etree._Element) -> PageSetup | None:
+    """Extract the document's representative page setup.
+
+    OOXML may carry multiple ``<w:sectPr>`` — one per section. For the
+    backward-compatible single-value ``DocumentMetadata.page_setup`` we
+    surface the **final** section's geometry since that's the value
+    Word treats as the document default. Per-section page setup lives
+    on :attr:`ContentDocument.sections` (populated by
+    :func:`_build_sections`).
+    """
+    sect_prs = list(body_el.iter(W_SECTPR))
+    if not sect_prs:
+        return None
+    return _parse_page_setup_from_sect(sect_prs[-1])
+
+
+def _build_sections(pending: list[tuple[int, etree._Element]]) -> tuple[Section, ...]:
+    """Convert the walk-time boundary list into a tuple of ``Section``s.
+
+    Each ``(end_block_index, sectPr_element)`` tuple becomes one
+    ``Section`` in the same order, preserving OOXML document order.
+    Returns an empty tuple when the document has no sectPr at all, so
+    callers get the "implicit single section" shape for free.
+    """
+    sections: list[Section] = []
+    for end_idx, sect_el in pending:
+        sections.append(
+            Section(
+                end_block_index=end_idx,
+                page_setup=_parse_page_setup_from_sect(sect_el),
+                break_type=_parse_break_type(sect_el),
+            )
+        )
+    return tuple(sections)
 
 
 # --------------------------------------------------------------------------
