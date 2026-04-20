@@ -21,12 +21,22 @@ from kaos_core.logging import get_logger
 from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.ooxml.namespace import (
+    A_BLIP,
+    A_EXT,
+    A_GRAPHIC,
+    A_GRAPHIC_DATA,
+    A_OFF,
     CT_FOOTER,
     CT_HEADER,
     CT_SETTINGS,
+    PIC,
+    PIC_BLIP_FILL,
+    PIC_PIC,
+    R_EMBED,
     R_ID_ATTR,
     RT_FOOTER,
     RT_HEADER,
+    RT_IMAGE,
     RT_SETTINGS,
     W_BODY,
     W_EVEN_AND_ODD_HEADERS,
@@ -48,6 +58,11 @@ from kaos_office.ooxml.namespace import (
     W_TITLEPG,
     W_TR,
     W_TYPE,
+    WP,
+    WP_DOCPR,
+    WP_EXTENT,
+    WP_INLINE,
+    A,
     R,
     W,
     pt_to_twips,
@@ -85,9 +100,37 @@ _RT_CORE_PROPS = (
     "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
 )
 
-# Namespace maps
-_W_NSMAP = {"w": W, "r": R}
+# Namespace maps. wp / a / pic are declared on the root so inline
+# drawings (images) serialize as prefixed names rather than inline
+# xmlns= declarations on every <w:drawing>.
+_W_NSMAP = {"w": W, "r": R, "wp": WP, "a": A, "pic": PIC}
 _CP_NS = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+
+# Image dimensioning. OOXML uses EMU (English Metric Units); 914400 EMU
+# == 1 inch == 72 points. Images whose Image.width / .height are unset
+# fall back to a conservative 2-inch box so Word still lays them out.
+_EMU_PER_POINT = 12700  # 914400 / 72
+_DEFAULT_IMAGE_EMU = 1828800  # 2 inches
+
+# Mime-type → file extension used in the ZIP part name and Content-Type
+# Default declaration. Covers the four formats Word natively renders.
+# Anything else is dropped with a warning at decode time.
+_MIME_TO_EXT = {
+    "image/png": "png",
+    "image/jpeg": "jpeg",
+    "image/jpg": "jpeg",
+    "image/gif": "gif",
+    "image/bmp": "bmp",
+    "image/tiff": "tiff",
+}
+_IMAGE_CONTENT_TYPES = {
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "tiff": "image/tiff",
+}
 _DC_NS = "http://purl.org/dc/elements/1.1/"
 _DCTERMS_NS = "http://purl.org/dc/terms/"
 
@@ -142,7 +185,7 @@ def write_docx_bytes(doc: Any) -> bytes:
     doc_rels.add(_RT_NUMBERING, "numbering.xml")
 
     # Build document.xml
-    ctx = _WriteContext(doc_rels=doc_rels)
+    ctx = _WriteContext(doc_rels=doc_rels, writer=writer)
     _prepare_notes(doc, ctx)
 
     # Headers & footers (Phase 4) — parts are written before document.xml so
@@ -177,6 +220,12 @@ def write_docx_bytes(doc: Any) -> bytes:
         writer.content_types.add_override("/word/comments.xml", _CT_COMMENTS)
         doc_rels.add(_RT_COMMENTS_REL, "comments.xml")
         writer.add_xml_part("word/comments.xml", _build_comments(ctx))
+
+    # Register Content-Type Default for every image extension emitted
+    # during body serialization. Idempotent — add_default overwrites by
+    # key, so declaring the same extension twice is safe.
+    for ext in ctx.image_extensions:
+        writer.content_types.add_default(ext, _IMAGE_CONTENT_TYPES.get(ext, f"image/{ext}"))
 
     # <w:evenAndOddHeaders/> in word/settings.xml is the document-wide gate
     # for w:type="even" header/footer references. Without it Word ignores
@@ -226,10 +275,13 @@ class _WriteContext:
         "has_lists",
         "header_refs",
         "hyperlink_urls",
+        "image_counter",
+        "image_extensions",
         "list_counter",
+        "writer",
     )
 
-    def __init__(self, doc_rels: Any = None) -> None:
+    def __init__(self, doc_rels: Any = None, writer: Any = None) -> None:
         self.has_lists = False
         self.has_footnotes = False
         self.has_endnotes = False
@@ -245,6 +297,13 @@ class _WriteContext:
         # Phase 4: list of (kind, rel_id) per ref type for sectPr emission.
         self.header_refs: list[tuple[str, str]] = []
         self.footer_refs: list[tuple[str, str]] = []
+        # Phase 4B: image emission — writer holds the OPC package so
+        # _serialize_image can register media parts; image_counter drives
+        # image1.png / image2.jpeg naming; image_extensions collects the
+        # set of extensions we need to declare as Content-Type defaults.
+        self.writer = writer
+        self.image_counter = 0
+        self.image_extensions: set[str] = set()
 
 
 def _write_header_footer_parts(doc: Any, ctx: _WriteContext, writer: OPCPackageWriter) -> None:
@@ -543,6 +602,7 @@ def _serialize_inline(parent: etree._Element, inline: Any, ctx: _WriteContext) -
         Code,
         Emphasis,
         FootnoteRef,
+        Image,
         LineBreak,
         Link,
         SoftBreak,
@@ -554,6 +614,9 @@ def _serialize_inline(parent: etree._Element, inline: Any, ctx: _WriteContext) -
 
     if isinstance(inline, Span) and _is_revision(inline):
         _serialize_revision_span(parent, inline, ctx)
+        return
+    if isinstance(inline, Image):
+        _serialize_image(parent, inline, ctx)
         return
     if isinstance(inline, Text):
         r = etree.SubElement(parent, W_R)
@@ -616,6 +679,141 @@ def _serialize_inline(parent: etree._Element, inline: Any, ctx: _WriteContext) -
             t = etree.SubElement(r, W_T)
             t.set(_XML_SPACE, "preserve")
             t.text = text
+
+
+def _decode_image_src(src: str) -> tuple[bytes, str] | None:
+    """Resolve an ``Image.src`` URI to ``(bytes, ext)``.
+
+    Supports the two URIs callers actually hand us:
+    - ``data:image/<fmt>;base64,<payload>`` — the default from both the
+      kaos-pdf image_src_builder and LLM-produced documents.
+    - ``file://<absolute-path>`` — local disk read.
+
+    Any other URI (``http(s)://``, ``docx://``, bare logical URIs) is
+    outside the writer's storage policy and returns ``None``; the caller
+    falls back to emitting alt text. If the bytes don't look like one of
+    the six supported image formats we also bail — Word won't render an
+    unknown MIME anyway.
+    """
+    import base64
+    from urllib.parse import unquote
+
+    if not src:
+        return None
+    if src.startswith("data:"):
+        try:
+            header, _, payload = src.partition(",")
+            if ";base64" not in header:
+                # data:image/png,<urlencoded> is legal but rare; decoding
+                # urlencoded bytes into a PNG is a degenerate case we
+                # don't support.
+                return None
+            mime = header[len("data:") :].split(";", 1)[0].strip().lower()
+            ext = _MIME_TO_EXT.get(mime)
+            if ext is None:
+                return None
+            data = base64.b64decode(payload, validate=False)
+        except (ValueError, TypeError):
+            return None
+        return (data, ext) if data else None
+    if src.startswith("file://"):
+        try:
+            path = Path(unquote(src[len("file://") :]))
+            if not path.exists():
+                return None
+            data = path.read_bytes()
+        except (OSError, ValueError):
+            return None
+        ext_raw = path.suffix.lstrip(".").lower()
+        ext = _MIME_TO_EXT.get(
+            f"image/{ext_raw}", ext_raw if ext_raw in _IMAGE_CONTENT_TYPES else None
+        )
+        if ext is None:
+            return None
+        return (data, ext)
+    return None
+
+
+def _serialize_image(parent: etree._Element, inline: Any, ctx: _WriteContext) -> None:
+    """Serialize an ``Image`` inline as a ``<w:drawing><wp:inline>`` picture.
+
+    The bytes are written to ``word/media/imageN.<ext>`` and registered
+    via a new ``RT_IMAGE`` relationship whose ``r:embed`` attribute ties
+    back to ``<a:blip>``. Dimensions go on both ``wp:extent`` (outer
+    layout) and the inner ``a:ext`` (graphic frame) in matching EMU so
+    Word doesn't re-scale.
+
+    Falls back to emitting alt/title text when the source URI cannot be
+    resolved to usable bytes. Silent failures are avoided: every skip
+    path logs at INFO level with the URI prefix.
+    """
+    src = getattr(inline, "src", "")
+    decoded = _decode_image_src(src)
+    if decoded is None or ctx.writer is None or ctx.doc_rels is None:
+        logger.info("docx.writer: image src not embeddable, emitting alt text (src=%r)", src[:80])
+        alt = getattr(inline, "alt", None) or getattr(inline, "title", None) or ""
+        if alt:
+            r = etree.SubElement(parent, W_R)
+            t = etree.SubElement(r, W_T)
+            t.set(_XML_SPACE, "preserve")
+            t.text = alt
+        return
+
+    data, ext = decoded
+    ctx.image_counter += 1
+    idx = ctx.image_counter
+    part_name = f"image{idx}.{ext}"
+    full_path = f"word/media/{part_name}"
+    ctx.writer.add_part(full_path, data)
+    ctx.image_extensions.add(ext)
+    rel = ctx.doc_rels.add(RT_IMAGE, f"media/{part_name}")
+
+    # Dimensions. Image.width / .height are in points (kaos-content
+    # convention). Default to a 2" box when the author didn't specify.
+    width_pt = getattr(inline, "width", None)
+    height_pt = getattr(inline, "height", None)
+    cx = round(float(width_pt) * _EMU_PER_POINT) if width_pt else _DEFAULT_IMAGE_EMU
+    cy = round(float(height_pt) * _EMU_PER_POINT) if height_pt else _DEFAULT_IMAGE_EMU
+
+    alt = getattr(inline, "alt", "") or ""
+    title = getattr(inline, "title", "") or part_name
+
+    r = etree.SubElement(parent, W_R)
+    drawing = etree.SubElement(r, qn(W, "drawing"))
+    inline_el = etree.SubElement(
+        drawing,
+        WP_INLINE,
+        distT="0",
+        distB="0",
+        distL="0",
+        distR="0",
+    )
+    etree.SubElement(inline_el, WP_EXTENT, cx=str(cx), cy=str(cy))
+    etree.SubElement(inline_el, qn(WP, "effectExtent"), l="0", t="0", r="0", b="0")
+    docpr = etree.SubElement(inline_el, WP_DOCPR, id=str(idx), name=f"Picture {idx}")
+    if alt:
+        docpr.set("descr", alt)
+    cnv_gfp = etree.SubElement(inline_el, qn(WP, "cNvGraphicFramePr"))
+    etree.SubElement(cnv_gfp, qn(A, "graphicFrameLocks"), noChangeAspect="1")
+
+    graphic = etree.SubElement(inline_el, A_GRAPHIC)
+    graphic_data = etree.SubElement(graphic, A_GRAPHIC_DATA, uri=PIC)
+
+    pic = etree.SubElement(graphic_data, PIC_PIC)
+    nv_pic_pr = etree.SubElement(pic, qn(PIC, "nvPicPr"))
+    etree.SubElement(nv_pic_pr, qn(PIC, "cNvPr"), id="0", name=title)
+    etree.SubElement(nv_pic_pr, qn(PIC, "cNvPicPr"))
+
+    blip_fill = etree.SubElement(pic, PIC_BLIP_FILL)
+    etree.SubElement(blip_fill, A_BLIP, **{R_EMBED: rel.id})
+    stretch = etree.SubElement(blip_fill, qn(A, "stretch"))
+    etree.SubElement(stretch, qn(A, "fillRect"))
+
+    sp_pr = etree.SubElement(pic, qn(PIC, "spPr"))
+    xfrm = etree.SubElement(sp_pr, qn(A, "xfrm"))
+    etree.SubElement(xfrm, A_OFF, x="0", y="0")
+    etree.SubElement(xfrm, A_EXT, cx=str(cx), cy=str(cy))
+    etree.SubElement(sp_pr, qn(A, "prstGeom"), prst="rect")
 
 
 def _build_styles() -> etree._Element:
