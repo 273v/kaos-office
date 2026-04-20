@@ -347,50 +347,27 @@ def _build_header_footer_part(kind: str, blocks: tuple, ctx: _WriteContext) -> e
     return root
 
 
-def _build_document(doc: Any, ctx: _WriteContext) -> etree._Element:
-    """Build word/document.xml from ContentDocument."""
-    root = etree.Element(qn(W, "document"), nsmap=_W_NSMAP)
-    body = etree.SubElement(root, W_BODY)
+def _twips_or_default(value: float | None, default_twips: int) -> str:
+    if value is None:
+        return str(default_twips)
+    return str(pt_to_twips(value))
 
-    for block in doc.body:
-        _serialize_block(body, block, ctx)
 
-    sect_pr = etree.SubElement(body, qn(W, "sectPr"))
+def _write_page_setup_into(sect_pr: etree._Element, ps: Any) -> None:
+    """Append ``<w:pgSz>`` + ``<w:pgMar>`` children to ``sect_pr``.
 
-    # Header / footer references must precede pgSz / pgMar in sectPr.
-    for kind, rid in ctx.header_refs:
-        etree.SubElement(sect_pr, W_HEADER_REFERENCE, **{W_TYPE: kind, R_ID_ATTR: rid})
-    for kind, rid in ctx.footer_refs:
-        etree.SubElement(sect_pr, W_FOOTER_REFERENCE, **{W_TYPE: kind, R_ID_ATTR: rid})
-
-    # <w:titlePg/> gates the "first" header/footer — without it Word
-    # silently ignores any headerReference/footerReference with w:type="first".
-    # The element must come after references and before pgSz per ECMA-376
-    # §17.6.17 child-order rules.
-    has_first = any(kind == "first" for kind, _ in ctx.header_refs) or any(
-        kind == "first" for kind, _ in ctx.footer_refs
-    )
-    if has_first:
-        etree.SubElement(sect_pr, W_TITLEPG)
-
-    # Page setup: prefer doc.metadata.page_setup values; fall back to
-    # US Letter with 1 inch margins so the output still opens in Word
-    # when the source didn't carry any geometry.
-    ps = getattr(getattr(doc, "metadata", None), "page_setup", None)
-
-    def _twips(value: float | None, default_twips: int) -> str:
-        if value is None:
-            return str(default_twips)
-        return str(pt_to_twips(value))
-
-    pg_width = _twips(getattr(ps, "page_width_pt", None) if ps else None, 12240)
-    pg_height = _twips(getattr(ps, "page_height_pt", None) if ps else None, 15840)
-    margin_top = _twips(getattr(ps, "margin_top_pt", None) if ps else None, 1440)
-    margin_right = _twips(getattr(ps, "margin_right_pt", None) if ps else None, 1440)
-    margin_bottom = _twips(getattr(ps, "margin_bottom_pt", None) if ps else None, 1440)
-    margin_left = _twips(getattr(ps, "margin_left_pt", None) if ps else None, 1440)
-    margin_header = _twips(getattr(ps, "header_distance_pt", None) if ps else None, 720)
-    margin_footer = _twips(getattr(ps, "footer_distance_pt", None) if ps else None, 720)
+    ``ps`` is a :class:`~kaos_content.model.metadata.PageSetup` or
+    anything with the same fields; ``None`` fields fall back to US
+    Letter / 1-inch margins so the sectPr is always complete.
+    """
+    pg_width = _twips_or_default(getattr(ps, "page_width_pt", None) if ps else None, 12240)
+    pg_height = _twips_or_default(getattr(ps, "page_height_pt", None) if ps else None, 15840)
+    margin_top = _twips_or_default(getattr(ps, "margin_top_pt", None) if ps else None, 1440)
+    margin_right = _twips_or_default(getattr(ps, "margin_right_pt", None) if ps else None, 1440)
+    margin_bottom = _twips_or_default(getattr(ps, "margin_bottom_pt", None) if ps else None, 1440)
+    margin_left = _twips_or_default(getattr(ps, "margin_left_pt", None) if ps else None, 1440)
+    margin_header = _twips_or_default(getattr(ps, "header_distance_pt", None) if ps else None, 720)
+    margin_footer = _twips_or_default(getattr(ps, "footer_distance_pt", None) if ps else None, 720)
 
     etree.SubElement(sect_pr, W_PGSZ, **{qn(W, "w"): pg_width, qn(W, "h"): pg_height})
     etree.SubElement(
@@ -405,6 +382,120 @@ def _build_document(doc: Any, ctx: _WriteContext) -> etree._Element:
             qn(W, "footer"): margin_footer,
         },
     )
+
+
+def _write_break_type_into(sect_pr: etree._Element, break_type: str) -> None:
+    """Append ``<w:type w:val="..."/>`` when the value is non-default.
+
+    ``nextPage`` is OOXML's implicit default and Word never writes it
+    explicitly, so skip emission to keep diffs tight against a Word-
+    authored round-trip.
+    """
+    if break_type and break_type != "nextPage":
+        etree.SubElement(sect_pr, qn(W, "type"), **{qn(W, "val"): break_type})
+
+
+def _emit_final_sect_pr(body: etree._Element, ps: Any, break_type: str, ctx: _WriteContext) -> None:
+    """Build the body-direct closing sectPr with header/footer refs + gates.
+
+    All the Phase 4/4B head/foot machinery (references, titlePg, etc.)
+    lives here regardless of how many sections the document has — the
+    final sectPr is where shared header/footer refs are applied.
+    """
+    sect_pr = etree.SubElement(body, qn(W, "sectPr"))
+
+    for kind, rid in ctx.header_refs:
+        etree.SubElement(sect_pr, W_HEADER_REFERENCE, **{W_TYPE: kind, R_ID_ATTR: rid})
+    for kind, rid in ctx.footer_refs:
+        etree.SubElement(sect_pr, W_FOOTER_REFERENCE, **{W_TYPE: kind, R_ID_ATTR: rid})
+
+    _write_break_type_into(sect_pr, break_type)
+
+    has_first = any(kind == "first" for kind, _ in ctx.header_refs) or any(
+        kind == "first" for kind, _ in ctx.footer_refs
+    )
+    if has_first:
+        etree.SubElement(sect_pr, W_TITLEPG)
+
+    _write_page_setup_into(sect_pr, ps)
+
+
+def _emit_section_break_paragraph(body: etree._Element, section: Any, ctx: _WriteContext) -> None:
+    """Emit an empty paragraph whose pPr carries this section's sectPr.
+
+    OOXML closes non-final sections via the last paragraph's pPr. We
+    always emit a fresh empty paragraph rather than rewriting the
+    preceding block's pPr: it's format-agnostic (works when the
+    previous block is a table), and a reader that drops empty
+    paragraphs still sees the sectPr and closes the section at the
+    correct block index. See ECMA-376 §17.6 and the reader/writer
+    round-trip locked in by ``test_docx_phase4c_roundtrip``.
+    """
+    # Suppress unused-arg lint: ctx kept for future sectPrChange etc.
+    del ctx
+
+    p = etree.SubElement(body, W_P)
+    ppr = etree.SubElement(p, W_PPR)
+    sect_pr = etree.SubElement(ppr, qn(W, "sectPr"))
+
+    break_type = getattr(section, "break_type", "nextPage")
+    _write_break_type_into(sect_pr, break_type)
+
+    ps = getattr(section, "page_setup", None)
+    _write_page_setup_into(sect_pr, ps)
+
+
+def _build_document(doc: Any, ctx: _WriteContext) -> etree._Element:
+    """Build word/document.xml from ContentDocument.
+
+    Phase 4C: when ``doc.sections`` is populated, emit one pPr-nested
+    sectPr per non-final section at the right block boundary, and the
+    final section as the body-direct sectPr. When ``doc.sections`` is
+    empty, fall back to the single body-direct sectPr (Phase 4
+    behavior) driven by ``metadata.page_setup``.
+    """
+    root = etree.Element(qn(W, "document"), nsmap=_W_NSMAP)
+    body = etree.SubElement(root, W_BODY)
+
+    sections = tuple(getattr(doc, "sections", ()) or ())
+
+    if not sections:
+        # Phase 4 path — single implicit section.
+        for block in doc.body:
+            _serialize_block(body, block, ctx)
+        ps = getattr(getattr(doc, "metadata", None), "page_setup", None)
+        _emit_final_sect_pr(body, ps, "nextPage", ctx)
+        return root
+
+    # Phase 4C multi-section path. Walk blocks + section cursor in
+    # lockstep: after emitting block i, if any non-final section ends
+    # at count == i+1, insert a section-break paragraph. The last
+    # section closes the body with a direct sectPr child.
+    section_idx = 0
+    n_sections = len(sections)
+    for i, block in enumerate(doc.body):
+        _serialize_block(body, block, ctx)
+        count = i + 1
+        while (
+            section_idx < n_sections - 1
+            and getattr(sections[section_idx], "end_block_index", -1) == count
+        ):
+            _emit_section_break_paragraph(body, sections[section_idx], ctx)
+            section_idx += 1
+
+    # Handle degenerate leading-empty sections (end_block_index == 0)
+    # that weren't covered by the main loop because they fire before
+    # any block is emitted. Rare but valid OOXML.
+    while (
+        section_idx < n_sections - 1 and getattr(sections[section_idx], "end_block_index", -1) == 0
+    ):
+        _emit_section_break_paragraph(body, sections[section_idx], ctx)
+        section_idx += 1
+
+    final_section = sections[-1]
+    final_ps = getattr(final_section, "page_setup", None)
+    final_break = getattr(final_section, "break_type", "nextPage")
+    _emit_final_sect_pr(body, final_ps, final_break, ctx)
 
     return root
 
