@@ -11,8 +11,10 @@ footnotes, endnotes, comments, track changes (accept/skip), page breaks.
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from kaos_content import ContentDocument
 from kaos_content.builders import DocumentBuilder
@@ -163,8 +165,26 @@ class ParseContext:
     # walk by :func:`_build_sections`.
     pending_sections: list[tuple[int, etree._Element]] = field(default_factory=list)
 
+    # Phase 6.1: OPC package + URI policy for image extraction. ``pkg``
+    # lets ``_extract_image`` read the actual media bytes via
+    # ``pkg.read_part(target)``; ``image_src_builder`` converts those
+    # bytes + format + 1-based index into the ``Image.src`` value. The
+    # default builder inlines a ``data:image/<fmt>;base64,...`` URI so
+    # reader-to-writer round-trip is lossless (writer.py Phase 4B.2
+    # accepts ``data:`` URIs). Callers can pass their own builder to
+    # return bare logical URIs while collecting bytes side-channel —
+    # same contract as ``kaos-pdf.extract_pdf.image_src_builder``.
+    pkg: Any = None  # OPCPackage | None
+    image_src_builder: Any = None  # Callable[[bytes, str, int], str] | None
+    image_counter: int = 0
 
-def parse_docx(path: str | Path, *, track_changes: bool = False) -> ContentDocument:
+
+def parse_docx(
+    path: str | Path,
+    *,
+    track_changes: bool = False,
+    image_src_builder: Callable[[bytes, str, int], str] | None = None,
+) -> ContentDocument:
     """Parse a DOCX file into a ContentDocument.
 
     Args:
@@ -177,6 +197,16 @@ def parse_docx(path: str | Path, *, track_changes: bool = False) -> ContentDocum
             author / date / revision-id metadata. When False (default),
             the legacy "accept insertions, skip deletions" behavior
             applies and all revision metadata is discarded.
+        image_src_builder: Callable turning an embedded image's
+            ``(bytes, fmt, index_1_based)`` into the ``Image.src`` URI
+            string. Default is :func:`_inline_data_uri` which emits
+            ``data:image/<fmt>;base64,...`` so reader-to-writer
+            round-trip is lossless (the DOCX writer's
+            ``_decode_image_src`` accepts ``data:`` URIs). Callers who
+            need an artifact store or a bare logical URI pass their own
+            builder — e.g. write bytes to the VFS and return
+            ``kaos://artifacts/{id}/body``, or return ``docx://...``
+            while collecting bytes in a side-channel dict.
 
     Returns:
         ContentDocument with the extracted content.
@@ -276,6 +306,10 @@ def parse_docx(path: str | Path, *, track_changes: bool = False) -> ContentDocum
             endnotes=endnotes,
             comments=comments,
             track_changes=track_changes,
+            pkg=pkg,
+            image_src_builder=image_src_builder
+            if image_src_builder is not None
+            else _inline_data_uri,
         )
 
         for child in body:
@@ -894,8 +928,50 @@ def _collect_nested_table_text(tbl_el: etree._Element, ctx: ParseContext) -> lis
 # --------------------------------------------------------------------------
 
 
+def _inline_data_uri(data: bytes, fmt: str, index: int) -> str:
+    """Default :func:`parse_docx` ``image_src_builder``.
+
+    Emits a self-contained ``data:image/<fmt>;base64,<payload>`` URI so
+    the resulting ContentDocument round-trips through the DOCX writer
+    without a side-channel byte store. Mirror of kaos-pdf's
+    ``_image_data_uri``. ``index`` is accepted for signature parity with
+    caller-supplied builders but is unused here — base64 URIs don't
+    need an index to be unique.
+    """
+    del index  # unused — default builder is stateless
+    import base64
+
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:image/{fmt};base64,{encoded}"
+
+
+def _media_ext_to_fmt(target: str) -> str | None:
+    """Normalize a media part path's extension to the MIME subtype the
+    writer + its content-type table understand. Returns ``None`` for
+    formats we don't support (Word's own renderer rejects them too).
+    """
+    ext = target.rsplit(".", 1)[-1].lower() if "." in target else ""
+    # Mirror of _IMAGE_CONTENT_TYPES keys in the writer.
+    mapping = {
+        "png": "png",
+        "jpg": "jpeg",
+        "jpeg": "jpeg",
+        "gif": "gif",
+        "bmp": "bmp",
+        "tiff": "tiff",
+    }
+    return mapping.get(ext)
+
+
 def _extract_image(drawing_el: etree._Element, ctx: ParseContext) -> Image | None:
-    """Extract an image from a w:drawing element."""
+    """Extract an image from a ``<w:drawing>`` element.
+
+    Phase 6.1: reads the embedded bytes from the OPC package and hands
+    them to ``ctx.image_src_builder`` so ``Image.src`` is a URI the
+    writer can re-embed. Before 6.1 we returned a bare ``docx://...``
+    URI and the writer couldn't round-trip it — images silently dropped
+    to alt text on write.
+    """
     # Find the blip (image reference)
     blip = drawing_el.find(f".//{qn(A, 'blip')}")
     if blip is None:
@@ -930,9 +1006,27 @@ def _extract_image(drawing_el: etree._Element, ctx: ParseContext) -> Image | Non
         except (TypeError, ValueError):
             pass
 
-    # Build image URI
-    media_name = target.rsplit("/", 1)[-1] if "/" in target else target
-    src = f"docx://{media_name}"
+    # Resolve ``Image.src`` by reading media bytes and handing them to
+    # the configured builder. If the package lookup fails (missing
+    # part, unsupported extension, old ``parse_docx`` call with
+    # ``ctx.pkg=None``) fall back to the pre-6.1 bare ``docx://`` URI
+    # so at least the AST shape survives.
+    fmt = _media_ext_to_fmt(target)
+    src: str
+    if ctx.pkg is not None and ctx.image_src_builder is not None and fmt is not None:
+        try:
+            data = ctx.pkg.read_part(target)
+        except (KeyError, FileNotFoundError, OSError):
+            data = None
+        if data:
+            ctx.image_counter += 1
+            src = ctx.image_src_builder(data, fmt, ctx.image_counter)
+        else:
+            media_name = target.rsplit("/", 1)[-1] if "/" in target else target
+            src = f"docx://{media_name}"
+    else:
+        media_name = target.rsplit("/", 1)[-1] if "/" in target else target
+        src = f"docx://{media_name}"
 
     return Image(
         src=src,

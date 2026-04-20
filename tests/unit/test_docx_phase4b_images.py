@@ -168,9 +168,10 @@ class TestDecodeImageSrc:
     def test_docx_logical_uri_returns_none(self) -> None:
         from kaos_office.docx.writer import _decode_image_src
 
-        # The reader emits src="docx://..." bare logical URIs. Those are
-        # not round-trippable without a side-channel byte store, so the
-        # writer declines them and falls back to alt text.
+        # Phase 6.1 default is ``data:`` URI, but callers can pass a
+        # builder returning a bare ``docx://`` logical URI. The writer
+        # declines those (no side-channel byte store) and falls back to
+        # alt text — same contract as ``http(s)://``.
         assert _decode_image_src("docx://word/media/image1.png") is None
 
     def test_empty_src_returns_none(self) -> None:
@@ -310,12 +311,34 @@ class TestRoundTrip:
         images = list(find_by_type(reloaded, Image))
         assert len(images) == 1, f"expected exactly one Image, got {len(images)}"
         img = images[0]
-        # Reader emits docx:// logical URIs keyed by the media part path.
-        assert img.src.endswith("image1.png"), f"unexpected src {img.src!r}"
+        # Phase 6.1: reader defaults to data: URIs so the writer can
+        # round-trip. The payload is the actual PNG bytes base64-encoded.
+        assert img.src.startswith("data:image/png;base64,"), f"unexpected src {img.src!r}"
+        payload = img.src[len("data:image/png;base64,") :]
+        assert base64.b64decode(payload) == _minimal_png_bytes()
         # Width/height survive (points → EMU → points).
         assert img.width is not None and abs(img.width - 72.0) < 1.0
         assert img.height is not None and abs(img.height - 72.0) < 1.0
         assert img.alt == "recovered"
+
+    def test_full_roundtrip_preserves_image_through_second_write(self, tmp_path: Path) -> None:
+        """Phase 6.1 contract: write → parse → write → parse loop
+        preserves the image at each stage. Pre-6.1 the second write
+        dropped the image to alt text."""
+        orig = _doc_with_image(_png_data_uri(), alt="chain", width=72.0, height=72.0)
+        a = tmp_path / "a.docx"
+        b = tmp_path / "b.docx"
+        write_docx(orig, a)
+        loaded = parse_docx(a)
+        write_docx(loaded, b)
+        reloaded = parse_docx(b)
+        images = list(find_by_type(reloaded, Image))
+        assert len(images) == 1, "second round trip lost the image"
+        assert images[0].alt == "chain"
+        # Bytes survive the second write unchanged.
+        assert images[0].src.startswith("data:image/png;base64,")
+        payload = images[0].src[len("data:image/png;base64,") :]
+        assert base64.b64decode(payload) == _minimal_png_bytes()
 
     def test_media_bytes_are_identical_on_roundtrip(self, tmp_path: Path) -> None:
         """The bytes we wrote are the bytes Word would unzip."""
@@ -325,6 +348,67 @@ class TestRoundTrip:
         write_docx(orig, out)
         with zipfile.ZipFile(out) as zf:
             assert zf.read("word/media/image1.png") == expected
+
+
+class TestReaderImageSrcBuilder:
+    """``parse_docx(image_src_builder=...)`` lets callers pick the URI
+    policy for reader-produced images. Mirror of
+    ``kaos-pdf.extract_pdf.image_src_builder`` (kaos-pdf/1782546)."""
+
+    def test_default_builder_emits_data_uris(self, tmp_path: Path) -> None:
+        orig = _doc_with_image(_png_data_uri(), alt="default")
+        out = tmp_path / "rt.docx"
+        write_docx(orig, out)
+        reloaded = parse_docx(out)  # no builder → default
+        img = next(iter(find_by_type(reloaded, Image)), None)
+        assert img is not None
+        assert img.src.startswith("data:image/")
+
+    def test_custom_builder_receives_bytes_and_fmt(self, tmp_path: Path) -> None:
+        """Builder is called once per embedded image with the raw
+        bytes + normalized format + 1-based index."""
+        orig = _doc_with_image(_png_data_uri(), alt="custom")
+        out = tmp_path / "rt.docx"
+        write_docx(orig, out)
+
+        calls: list[tuple[int, str, int]] = []  # (len(data), fmt, index)
+
+        def builder(data: bytes, fmt: str, index: int) -> str:
+            calls.append((len(data), fmt, index))
+            return f"artifact://img/{index}.{fmt}"
+
+        reloaded = parse_docx(out, image_src_builder=builder)
+        img = next(iter(find_by_type(reloaded, Image)), None)
+        assert img is not None
+        assert img.src == "artifact://img/1.png"
+        # Exactly one invocation with the real PNG bytes + 1-based index.
+        assert len(calls) == 1
+        data_len, fmt, index = calls[0]
+        assert fmt == "png"
+        assert index == 1
+        assert data_len == len(_minimal_png_bytes())
+
+    def test_side_channel_byte_collection(self, tmp_path: Path) -> None:
+        """The canonical use case: caller collects bytes in a dict
+        keyed by the URI they return, so the AST stays lightweight
+        while bytes land in a side store."""
+        orig = _doc_with_image(_png_data_uri(), alt="side")
+        out = tmp_path / "rt.docx"
+        write_docx(orig, out)
+
+        collected: dict[str, bytes] = {}
+
+        def builder(data: bytes, fmt: str, index: int) -> str:
+            uri = f"vfs://media/{index}.{fmt}"
+            collected[uri] = data
+            return uri
+
+        reloaded = parse_docx(out, image_src_builder=builder)
+        images = list(find_by_type(reloaded, Image))
+        assert images
+        assert set(collected) == {img.src for img in images}
+        for img in images:
+            assert collected[img.src] == _minimal_png_bytes()
 
 
 class TestLibreOfficeShapeChecks:
