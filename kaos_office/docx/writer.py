@@ -518,6 +518,9 @@ def _serialize_block(parent: etree._Element, block: Any, ctx: _WriteContext) -> 
     if isinstance(block, Div) and _is_revision(block):
         _serialize_revision_div(parent, block, ctx)
         return
+    if isinstance(block, Div) and _is_sdt(block):
+        _serialize_sdt_block(parent, block, ctx)
+        return
     if isinstance(block, Paragraph):
         _serialize_paragraph(parent, block, ctx)
     elif isinstance(block, Heading):
@@ -705,6 +708,9 @@ def _serialize_inline(parent: etree._Element, inline: Any, ctx: _WriteContext) -
 
     if isinstance(inline, Span) and _is_revision(inline):
         _serialize_revision_span(parent, inline, ctx)
+        return
+    if isinstance(inline, Span) and _is_sdt(inline):
+        _serialize_sdt_inline(parent, inline, ctx)
         return
     if isinstance(inline, Image):
         _serialize_image(parent, inline, ctx)
@@ -1146,6 +1152,71 @@ def _is_revision(node: Any) -> bool:
     if attr is None:
         return False
     return any(cls in _REV_CLASS_TO_TAG for cls in getattr(attr, "classes", ()) or ())
+
+
+def _is_sdt(node: Any) -> bool:
+    """Whether a Div/Span carries the ``"sdt"`` class (Phase 6.2).
+
+    Paired with ``_parse_sdt_pr`` in the reader: the reader wraps SDT
+    contents in a Div (block) or Span (inline) with ``classes=("sdt",)``
+    and the sdtPr metadata in ``Attr.kv`` under ``sdt.*`` keys. The
+    writer reads that back and re-emits the ``<w:sdt>`` wrapper.
+    """
+    attr = getattr(node, "attr", None)
+    if attr is None:
+        return False
+    return "sdt" in (getattr(attr, "classes", ()) or ())
+
+
+def _build_sdt_pr(kv: dict[str, str]) -> etree._Element:
+    """Build a ``<w:sdtPr>`` element from the reader-captured kv dict.
+
+    Input keys are the ``sdt.*`` namespace produced by
+    ``reader._parse_sdt_pr``. Unknown keys are ignored (forward-compat
+    with future metadata additions).
+    """
+    pr = etree.Element(qn(W, "sdtPr"))
+    # Order follows ECMA-376's observed Word-authored order: alias, tag,
+    # id, lock, placeholder, showing, control-kind. Within-Word editors
+    # tolerate other orderings but matching Word keeps diffs clean.
+    if "sdt.alias" in kv:
+        etree.SubElement(pr, qn(W, "alias"), **{qn(W, "val"): kv["sdt.alias"]})
+    if "sdt.tag" in kv:
+        etree.SubElement(pr, qn(W, "tag"), **{qn(W, "val"): kv["sdt.tag"]})
+    if "sdt.id" in kv:
+        etree.SubElement(pr, qn(W, "id"), **{qn(W, "val"): kv["sdt.id"]})
+    if "sdt.lock" in kv:
+        etree.SubElement(pr, qn(W, "lock"), **{qn(W, "val"): kv["sdt.lock"]})
+    if kv.get("sdt.showing_placeholder") == "1":
+        etree.SubElement(pr, qn(W, "showingPlcHdr"))
+    control_type = kv.get("sdt.control_type")
+    if control_type:
+        # Control-kind child is emitted as a bare element — we don't
+        # preserve per-control properties yet (e.g. dateFormat), so the
+        # control retains its type-identity but loses its validation
+        # rules. Acceptable tradeoff for MVP; Word still opens the file.
+        etree.SubElement(pr, qn(W, control_type))
+    return pr
+
+
+def _serialize_sdt_block(parent: etree._Element, div: Any, ctx: _WriteContext) -> None:
+    """Serialize a Div(classes=("sdt",)) as a ``<w:sdt>`` with block content."""
+    kv = (getattr(div.attr, "kv", None) or {}) if getattr(div, "attr", None) else {}
+    sdt = etree.SubElement(parent, qn(W, "sdt"))
+    sdt.append(_build_sdt_pr(kv))
+    content = etree.SubElement(sdt, qn(W, "sdtContent"))
+    for child in getattr(div, "children", ()) or ():
+        _serialize_block(content, child, ctx)
+
+
+def _serialize_sdt_inline(parent: etree._Element, span: Any, ctx: _WriteContext) -> None:
+    """Serialize a Span(classes=("sdt",)) as a ``<w:sdt>`` with inline content."""
+    kv = (getattr(span.attr, "kv", None) or {}) if getattr(span, "attr", None) else {}
+    sdt = etree.SubElement(parent, qn(W, "sdt"))
+    sdt.append(_build_sdt_pr(kv))
+    content = etree.SubElement(sdt, qn(W, "sdtContent"))
+    for child in getattr(span, "children", ()) or ():
+        _serialize_inline(content, child, ctx)
 
 
 def _revision_tag(node: Any) -> tuple[str, str] | None:
