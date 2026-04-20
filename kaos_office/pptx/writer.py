@@ -17,14 +17,85 @@ from __future__ import annotations
 import contextlib
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from kaos_core.logging import get_logger
 from pptx import Presentation
+from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.presentation import Presentation as PptxPresentation
 from pptx.util import Inches, Pt
 
 logger = get_logger(__name__)
+
+# Phase 6.3: text overflow policy. Real PPTX decks generated from an
+# LLM summary routinely overflow the original shape — the pre-6.3
+# writer set no auto-size, so PowerPoint silently cropped the output.
+OverflowMode = Literal["warn", "autofit", "extend"]
+
+# Heuristic threshold for "warn" mode — total characters per square
+# inch of shape area that indicates probable overflow at typical 18-pt
+# body text. Conservative: a 9x5-inch body shape (45 sq in) tolerates
+# ~6750 chars before warning fires. False positives are preferable to
+# false negatives here — caller was warned but no silent truncation.
+_OVERFLOW_CHARS_PER_SQ_IN = 150
+
+
+def _apply_overflow_policy(tf: Any, overflow: OverflowMode) -> None:
+    """Configure a text frame's auto-size per the overflow policy.
+
+    ``"warn"``   — no auto-size (PowerPoint default). A post-fill
+                   heuristic emits a warning log when total text
+                   length looks too large for the shape.
+    ``"autofit"`` — PowerPoint shrinks the font to fit the shape.
+    ``"extend"``  — PowerPoint grows the shape to fit the text.
+    """
+    if overflow == "autofit":
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    elif overflow == "extend":
+        tf.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
+    # "warn" leaves auto_size at its default (typically NONE) so the
+    # shape rendering matches what the original slide had.
+
+
+def _warn_if_probable_overflow(
+    tf: Any,
+    shape_width_emu: int | None,
+    shape_height_emu: int | None,
+    *,
+    slide_index: int,
+    label: str,
+) -> None:
+    """Rough post-fill check: emit a warning if text likely overflows.
+
+    This is deliberately imprecise (we don't have a rendering engine
+    on the Python side). The goal is to catch the obvious "LLM summary
+    produced 5x the original content" case, not to predict pixel-perfect
+    layout. False positives are acceptable; silent truncation isn't.
+    """
+    if shape_width_emu is None or shape_height_emu is None:
+        return
+    width_in = shape_width_emu / 914400.0
+    height_in = shape_height_emu / 914400.0
+    area_sq_in = width_in * height_in
+    if area_sq_in < 1.0:
+        return
+    total_chars = 0
+    for paragraph in tf.paragraphs:
+        for run in paragraph.runs:
+            total_chars += len(run.text or "")
+    density = total_chars / area_sq_in
+    if density > _OVERFLOW_CHARS_PER_SQ_IN:
+        logger.warning(
+            "pptx.writer: slide %d %s likely overflows "
+            "(%d chars in %.1f sq in = %.0f chars/sq in, threshold=%d). "
+            "Consider overflow='autofit' or overflow='extend' to avoid silent truncation.",
+            slide_index,
+            label,
+            total_chars,
+            area_sq_in,
+            density,
+            _OVERFLOW_CHARS_PER_SQ_IN,
+        )
 
 
 def write_pptx(
@@ -32,6 +103,7 @@ def write_pptx(
     path: str | Path,
     *,
     template: str | Path | None = None,
+    overflow: OverflowMode = "warn",
 ) -> Path:
     """Write a ContentDocument to a PPTX file.
 
@@ -39,6 +111,13 @@ def write_pptx(
         doc: A ``ContentDocument`` from kaos-content.
         path: Output file path.
         template: Optional .pptx template for branded output.
+        overflow: How to handle text that may not fit its shape.
+            ``"warn"`` (default) leaves auto-sizing off and emits a
+            logger warning when the character density for a shape
+            looks too high — prevents silent truncation of
+            LLM-generated content. ``"autofit"`` tells PowerPoint to
+            shrink the font to fit. ``"extend"`` grows the shape to
+            fit the text. Never silently truncates.
 
     Returns:
         The output path.
@@ -46,7 +125,7 @@ def write_pptx(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = write_pptx_bytes(doc, template=template)
+    data = write_pptx_bytes(doc, template=template, overflow=overflow)
     path.write_bytes(data)
 
     logger.info(
@@ -63,15 +142,11 @@ def write_pptx_bytes(
     doc: Any,
     *,
     template: str | Path | None = None,
+    overflow: OverflowMode = "warn",
 ) -> bytes:
     """Write a ContentDocument to PPTX bytes (in-memory).
 
-    Args:
-        doc: A ``ContentDocument`` from kaos-content.
-        template: Optional .pptx template for branded output.
-
-    Returns:
-        PPTX file as bytes.
+    See :func:`write_pptx` for ``overflow`` semantics.
     """
     prs = Presentation(str(template)) if template else Presentation()
 
@@ -82,8 +157,8 @@ def write_pptx_bytes(
     # Detect slide boundaries and build slides
     slide_groups = _segment_into_slides(doc.body)
 
-    for slide_blocks in slide_groups:
-        _add_slide(prs, slide_blocks)
+    for idx, slide_blocks in enumerate(slide_groups, start=1):
+        _add_slide(prs, slide_blocks, overflow=overflow, slide_index=idx)
 
     buf = BytesIO()
     prs.save(buf)
@@ -161,7 +236,13 @@ _TITLE_SLIDE_LAYOUT = 0  # "Title Slide"
 _BLANK_LAYOUT = 6  # "Blank" (index 5 is "Title Only")
 
 
-def _add_slide(prs: PptxPresentation, blocks: list[Any]) -> None:
+def _add_slide(
+    prs: PptxPresentation,
+    blocks: list[Any],
+    *,
+    overflow: OverflowMode = "warn",
+    slide_index: int = 0,
+) -> None:
     """Add a single slide to the presentation from a group of blocks."""
     from kaos_content.model.blocks import Heading, Table
 
@@ -231,9 +312,9 @@ def _add_slide(prs: PptxPresentation, blocks: list[Any]) -> None:
             ph1 = None
 
         if ph1 is not None and not has_shapes:
-            _fill_body_placeholder(ph1, body_blocks)
+            _fill_body_placeholder(ph1, body_blocks, overflow=overflow, slide_index=slide_index)
         else:
-            _add_body_textbox(slide, body_blocks)
+            _add_body_textbox(slide, body_blocks, overflow=overflow, slide_index=slide_index)
 
     # Add speaker notes — preserve inline formatting by recursing through the
     # Div's block children rather than just flattening to text.
@@ -249,17 +330,38 @@ def _add_slide(prs: PptxPresentation, blocks: list[Any]) -> None:
                 first = False
 
 
-def _fill_body_placeholder(placeholder: Any, blocks: list) -> None:
+def _fill_body_placeholder(
+    placeholder: Any,
+    blocks: list,
+    *,
+    overflow: OverflowMode = "warn",
+    slide_index: int = 0,
+) -> None:
     """Fill a body placeholder with blocks."""
     tf = placeholder.text_frame
     tf.clear()
+    _apply_overflow_policy(tf, overflow)
     first = True
     for block in blocks:
         _add_block_to_textframe(tf, block, first=first)
         first = False
+    if overflow == "warn":
+        _warn_if_probable_overflow(
+            tf,
+            getattr(placeholder, "width", None),
+            getattr(placeholder, "height", None),
+            slide_index=slide_index,
+            label="body placeholder",
+        )
 
 
-def _add_body_textbox(slide: Any, blocks: list) -> None:
+def _add_body_textbox(
+    slide: Any,
+    blocks: list,
+    *,
+    overflow: OverflowMode = "warn",
+    slide_index: int = 0,
+) -> None:
     """Add a textbox to the slide for body content."""
     from kaos_content.model.blocks import Figure, Table
 
@@ -284,10 +386,19 @@ def _add_body_textbox(slide: Any, blocks: list) -> None:
         txbox = slide.shapes.add_textbox(left, top, width, height)
         tf = txbox.text_frame
         tf.word_wrap = True
+        _apply_overflow_policy(tf, overflow)
         first = True
         for block in text_blocks:
             _add_block_to_textframe(tf, block, first=first)
             first = False
+        if overflow == "warn":
+            _warn_if_probable_overflow(
+                tf,
+                txbox.width,
+                txbox.height,
+                slide_index=slide_index,
+                label="body textbox",
+            )
 
     for table_block in table_blocks:
         _add_table_shape(slide, table_block)
