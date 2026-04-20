@@ -135,12 +135,15 @@ W_FOOTER_REFERENCE = qn(W, "footerReference")
 W_PGSZ = qn(W, "pgSz")
 W_PGMAR = qn(W, "pgMar")
 W_TITLEPG = qn(W, "titlePg")
+W_EVEN_AND_ODD_HEADERS = qn(W, "evenAndOddHeaders")
+W_SETTINGS = qn(W, "settings")
 R_ID_ATTR = qn(R, "id")
 
-# Content types for header / footer parts (relationship types RT_HEADER /
-# RT_FOOTER are already defined below in the relationships section).
+# Content types for header / footer / settings parts (relationship types
+# RT_HEADER / RT_FOOTER / RT_SETTINGS are already defined below).
 CT_HEADER = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
 CT_FOOTER = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
+CT_SETTINGS = "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"
 
 # Twip conversion (1 twip = 1/20 point = 1/1440 inch)
 TWIPS_PER_POINT = 20

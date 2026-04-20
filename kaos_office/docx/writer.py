@@ -23,10 +23,13 @@ from lxml import etree  # ty: ignore[unresolved-import]
 from kaos_office.ooxml.namespace import (
     CT_FOOTER,
     CT_HEADER,
+    CT_SETTINGS,
     R_ID_ATTR,
     RT_FOOTER,
     RT_HEADER,
+    RT_SETTINGS,
     W_BODY,
+    W_EVEN_AND_ODD_HEADERS,
     W_FOOTER_REFERENCE,
     W_FTR,
     W_HDR,
@@ -38,9 +41,11 @@ from kaos_office.ooxml.namespace import (
     W_PSTYLE,
     W_R,
     W_RPR,
+    W_SETTINGS,
     W_T,
     W_TBL,
     W_TC,
+    W_TITLEPG,
     W_TR,
     W_TYPE,
     R,
@@ -173,10 +178,34 @@ def write_docx_bytes(doc: Any) -> bytes:
         doc_rels.add(_RT_COMMENTS_REL, "comments.xml")
         writer.add_xml_part("word/comments.xml", _build_comments(ctx))
 
+    # <w:evenAndOddHeaders/> in word/settings.xml is the document-wide gate
+    # for w:type="even" header/footer references. Without it Word ignores
+    # every even reference, regardless of which sectPr it lives in.
+    has_even = any(kind == "even" for kind, _ in ctx.header_refs) or any(
+        kind == "even" for kind, _ in ctx.footer_refs
+    )
+    if has_even:
+        writer.content_types.add_override("/word/settings.xml", CT_SETTINGS)
+        doc_rels.add(RT_SETTINGS, "settings.xml")
+        writer.add_xml_part("word/settings.xml", _build_settings(even_and_odd=True))
+
     # Build core properties
     writer.add_xml_part("docProps/core.xml", _build_core_properties(doc))
 
     return writer.save_bytes()
+
+
+def _build_settings(*, even_and_odd: bool) -> etree._Element:
+    """Build a minimal word/settings.xml.
+
+    Only the features the writer actually needs to toggle land here; the
+    rest of the settings schema is left to Word's defaults. Grows as we
+    add gated features (mirrorMargins, defaultTabStop, ...).
+    """
+    root = etree.Element(W_SETTINGS, nsmap=_W_NSMAP)
+    if even_and_odd:
+        etree.SubElement(root, W_EVEN_AND_ODD_HEADERS)
+    return root
 
 
 class _WriteContext:
@@ -274,6 +303,16 @@ def _build_document(doc: Any, ctx: _WriteContext) -> etree._Element:
         etree.SubElement(sect_pr, W_HEADER_REFERENCE, **{W_TYPE: kind, R_ID_ATTR: rid})
     for kind, rid in ctx.footer_refs:
         etree.SubElement(sect_pr, W_FOOTER_REFERENCE, **{W_TYPE: kind, R_ID_ATTR: rid})
+
+    # <w:titlePg/> gates the "first" header/footer — without it Word
+    # silently ignores any headerReference/footerReference with w:type="first".
+    # The element must come after references and before pgSz per ECMA-376
+    # §17.6.17 child-order rules.
+    has_first = any(kind == "first" for kind, _ in ctx.header_refs) or any(
+        kind == "first" for kind, _ in ctx.footer_refs
+    )
+    if has_first:
+        etree.SubElement(sect_pr, W_TITLEPG)
 
     # Page setup: prefer doc.metadata.page_setup values; fall back to
     # US Letter with 1 inch margins so the output still opens in Word
