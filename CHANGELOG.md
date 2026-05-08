@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a2] — 2026-05-08
+
+CI supply-chain hardening (audit-02 F7) and SECURITY.md polish (audit-02
+F8). No source code or public API changes.
+
+### Security
+
+- **F7: CI supply-chain hardening.** `.github/workflows/security.yml`
+  pins the gitleaks Docker image to `v8.21.2` (no longer tracking
+  `:latest`), adds a Bandit static-analysis job (medium severity /
+  medium confidence; `B101,B404,B603,B607` skipped), and runs the
+  integration suite on `schedule` and `workflow_dispatch` so
+  cross-package regressions surface against `main` even though the
+  unit gate stays the PR fast path. SHA-pinning of GitHub Actions
+  themselves remains a follow-up; the existing
+  `.github/dependabot.yml` `github-actions` ecosystem PRs continue to
+  keep tag-pinned actions current.
+
+### Changed
+
+- **F8: `SECURITY.md` scope polished.** Added a one-paragraph preamble
+  describing what `kaos-office` does, listed the actual Tool boundary
+  (`ParseDocxTool`, `WriteDocxTool`, `ParseXlsxTool`, …), called out
+  that MCP transport security lives in `kaos-mcp` rather than here.
+  Existing OPC / OOXML / writer-path scope kept verbatim — it was
+  already accurate for this module.
+
 ## [0.1.0a1] — 2026-05-07
 
 First public alpha. Office document extraction (DOCX, PPTX, XLSX) into
