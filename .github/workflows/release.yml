@@ -1,0 +1,168 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # Manual fallback so a failed publish (e.g. a transient PyPI 5xx) can
+  # be retried without re-tagging.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          cache-suffix: release-py3.13
+
+      - name: Install Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --group dev --python 3.13
+
+      - name: Verify version matches tag
+        id: version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION=$(uv run python -c "from kaos_office._version import __version__; print(__version__)")
+          TAG=${GITHUB_REF_NAME#v}
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::Tag '$TAG' does not match _version.py value '$VERSION'"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Pre-publish QA
+        run: |
+          uv run ruff format --check kaos_office/ tests/
+          uv run ruff check kaos_office/ tests/
+          uv run ty check kaos_office/ tests/
+          uv run pytest tests/unit/ --no-cov
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      - name: Verify metadata
+        run: uvx --from twine twine check --strict dist/*
+
+      - name: Smoke-test the built wheel in a clean venv
+        run: |
+          uv venv --python 3.13 /tmp/smoke
+          uv pip install --python /tmp/smoke/bin/python dist/kaos_office-*-py3-none-any.whl
+          /tmp/smoke/bin/python -c "
+          import kaos_office
+          from kaos_office import (
+              KaosOfficeError,
+              DocxExtractionError, PptxExtractionError, XlsxExtractionError,
+              ParseDocxTool, ParsePptxTool, ParseXlsxTool,
+              GetDocxTextTool, GetDocxMarkdownTool, DocxMetadataTool, SearchDocxTool,
+              ListSlidesTool, GetSlideTool,
+              ListSheetsXlsxTool, GetSheetXlsxTool, XlsxMetadataTool,
+              WriteDocxTool, WritePptxTool, WriteXlsxTool,
+              extract_to_markdown, parse_docx, parse_pptx,
+              register_office_tools, search_document,
+          )
+          from kaos_office.docx import write_docx, write_docx_bytes
+          from kaos_office.pptx import write_pptx, write_pptx_bytes, parse_pptx as _pp
+          from kaos_office.xlsx import parse_xlsx, list_sheets, write_xlsx, write_xlsx_bytes
+          assert kaos_office.__version__, 'version missing from wheel'
+          assert len(kaos_office.__all__) >= 25
+          # Read tools — read-only / idempotent / non-destructive / closed-world.
+          for tool_cls in (
+              ParseDocxTool, GetDocxTextTool, GetDocxMarkdownTool, DocxMetadataTool, SearchDocxTool,
+              ParsePptxTool, ListSlidesTool, GetSlideTool,
+              ParseXlsxTool, ListSheetsXlsxTool, GetSheetXlsxTool, XlsxMetadataTool,
+          ):
+              ann = tool_cls().metadata.annotations
+              assert ann.readOnlyHint and ann.idempotentHint, tool_cls.__name__
+              assert not ann.destructiveHint and not ann.openWorldHint, tool_cls.__name__
+          # Write tools — refuse silent overwrites, write to disk.
+          for tool_cls in (WriteDocxTool, WritePptxTool, WriteXlsxTool):
+              ann = tool_cls().metadata.annotations
+              assert not ann.readOnlyHint, tool_cls.__name__
+              assert not ann.destructiveHint, tool_cls.__name__
+              assert ann.openWorldHint, tool_cls.__name__
+          print(f'kaos-office {kaos_office.__version__}: smoke OK ({len(kaos_office.__all__)} symbols)')
+          "
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          retention-days: 30
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/kaos-office
+    permissions:
+      id-token: write  # OIDC for Trusted Publishing
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
+          skip-existing: false
+
+  github-release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          PRERELEASE_FLAG=""
+          if [[ "$VERSION" == *a* || "$VERSION" == *b* || "$VERSION" == *rc* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "kaos-office $VERSION" \
+            --notes-from-tag \
+            $PRERELEASE_FLAG \
+            dist/*
