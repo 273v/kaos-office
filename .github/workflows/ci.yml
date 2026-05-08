@@ -126,21 +126,23 @@ jobs:
         # No-op for stable versions.
         run: uv python install --preview ${{ matrix.python-version }}
 
-      - name: Install Pillow build deps (Python 3.15 only)
-        # Pillow 12.x doesn't ship a cpython-3.15 wheel yet (3.15 is
-        # pre-release through Oct 2026), so uv falls back to a source
-        # build. The C extensions need: libjpeg (core JPEG codec),
-        # zlib (PNG), libfreetype (the _imagingft text-rendering
-        # extension that ImageDraw/ImageFont require — which kaos-office
-        # uses in synthetic-fixture tests), liblcms2 (color profiles),
-        # and libtiff (TIFF). Drop the whole step once Pillow publishes
-        # a 3.15 wheel.
+      - name: Install C build deps (Python 3.15 only)
+        # Several wheels don't ship cpython-3.15 binaries yet (3.15 is
+        # pre-release through Oct 2026), so uv falls back to source
+        # builds. Header packages required:
+        #   - libxml2-dev / libxslt1-dev / zlib1g-dev — lxml (kaos-office's
+        #     core OOXML parser dependency).
+        #   - libjpeg-dev / libfreetype6-dev / liblcms2-dev / libtiff-dev
+        #     — Pillow (the _imagingft text-rendering extension that
+        #     ImageDraw / ImageFont require, plus the standard codec
+        #     headers). Pulled in transitively via kaos-content[images].
+        # Drop the whole step once these projects ship 3.15 wheels.
         if: matrix.python-version == '3.15'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libjpeg-dev zlib1g-dev \
-            libfreetype6-dev \
+            libxml2-dev libxslt1-dev zlib1g-dev \
+            libjpeg-dev libfreetype6-dev \
             liblcms2-dev libtiff-dev
 
       - name: Install dependencies

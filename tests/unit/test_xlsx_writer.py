@@ -431,8 +431,15 @@ class TestPerformance:
         assert elapsed < 3.0, f"write_xlsx_bytes took {elapsed:.2f}s (budget 3s)"
         assert len(data) > 0
 
-    def test_fixture_roundtrip_under_5s(self, tmp_path: Path) -> None:
-        """Parse → write → re-parse of largest fixture under 5s."""
+    def test_fixture_roundtrip_under_10s(self, tmp_path: Path) -> None:
+        """Parse → write → re-parse of largest fixture under 10s.
+
+        Budget is 10s rather than 5s because shared CI runners (GitHub
+        Actions ubuntu-latest) routinely take 1.5-2x the wall-clock of
+        a developer workstation. The intent is to flag order-of-magnitude
+        regressions (e.g. an O(n^2) bug pushing it past 30s), not to
+        enforce a tight 5s budget that is fine locally and flaky in CI.
+        """
         fixture = FIXTURES / "ppplf-transaction-specific-disclosures-07-13-21.xlsx"
         if not fixture.exists():
             pytest.skip("PPP fixture not available")
@@ -443,4 +450,4 @@ class TestPerformance:
         out.write_bytes(data)
         parse_xlsx(out)
         elapsed = time.monotonic() - start
-        assert elapsed < 5.0, f"Full round-trip took {elapsed:.2f}s (budget 5s)"
+        assert elapsed < 10.0, f"Full round-trip took {elapsed:.2f}s (budget 10s)"
