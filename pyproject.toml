@@ -8,23 +8,41 @@ dynamic = ["version"]
 description = "Office document extraction for KAOS — DOCX, XLSX, PPTX to structured AST with provenance"
 readme = "README.md"
 requires-python = ">=3.13"
-license = { text = "LicenseRef-Proprietary" }
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [
   { name = "273 Ventures LLC", email = "it@273ventures.com" },
+]
+maintainers = [
+  { name = "Michael Bommarito", email = "mike@273ventures.com" },
+]
+keywords = [
+  "office",
+  "docx",
+  "pptx",
+  "xlsx",
+  "ooxml",
+  "extraction",
+  "kaos",
+  "mcp",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
+  "Topic :: Office/Business",
+  "Topic :: Office/Business :: Office Suites",
   "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Text Processing",
   "Typing :: Typed",
 ]
 dependencies = [
-  "kaos-content[markdown]>=0.1.0",
-  "kaos-core>=0.1.0",
+  "kaos-content[markdown]>=0.1.0a1,<0.2",
+  "kaos-core>=0.1.0a1,<0.2",
   "lxml>=5.0",
 ]
 
@@ -32,9 +50,16 @@ dependencies = [
 kaos-office = "kaos_office.cli:main"
 kaos-office-serve = "kaos_office.serve:main"
 
+# In the monorepo workspace these extras resolve through
+# `[tool.uv.sources]` below to the editable sibling source. The
+# per-module `273v/kaos-office` repo strips the `[mcp]` extra at
+# 0.1.0a1 because `kaos-mcp` isn't on PyPI yet (uv lock is strict and
+# refuses to resolve any declared extra whose package is not
+# resolvable). `[mcp]` will return once `kaos-mcp` ships on PyPI.
+# See docs/oss/checklists/per-package-release.md (F009 #4).
 [project.optional-dependencies]
 mcp = ["kaos-mcp>=0.1.0"]
-nlp = ["kaos-nlp-core>=0.1.0"]
+nlp = ["kaos-nlp-core>=0.1.0a2,<0.2"]
 pptx = [
     "python-pptx>=1.0",
 ]
@@ -67,20 +92,28 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://273ventures.com"
-Documentation = "https://docs.273ventures.com"
-Repository = "https://github.com/273v/kaos-modules"
+Homepage = "https://kelvin.legal"
+Documentation = "https://docs.kelvin.legal"
+Repository = "https://github.com/273v/kaos-office"
+Issues = "https://github.com/273v/kaos-office/issues"
+Changelog = "https://github.com/273v/kaos-office/blob/main/CHANGELOG.md"
 
 [tool.hatch.version]
 path = "kaos_office/_version.py"
 
 [tool.hatch.build.targets.sdist]
+# Sdist intentionally excludes /tests, /docs, and /CLAUDE.md.
+# Test fixtures total >5 MB and aren't useful to PyPI consumers;
+# tests/integration requires a runtime context; CLAUDE.md references
+# monorepo-only docs. Source code, license, changelog, and packaging
+# metadata are enough for source-build verification on PyPI.
 include = [
   "/kaos_office",
   "/README.md",
-  "/CLAUDE.md",
-  "/docs",
-  "/tests",
+  "/CHANGELOG.md",
+  "/LICENSE",
+  "/NOTICE",
+  "/pyproject.toml",
 ]
 
 [tool.hatch.build.targets.wheel]
