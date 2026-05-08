@@ -764,6 +764,30 @@ def _validate_xlsx_path(path_str: str) -> Path | None:
     return p
 
 
+# Shared XLSX-tool error copy. Every XLSX tool emits the same install
+# hint on ImportError and the same "file not found" body, so the
+# strings live here in one place to keep the three-part what/how/
+# alternative shape consistent across tools.
+_XLSX_IMPORT_ERROR = (
+    "XLSX optional dependency missing. The default native reader needs no extras; "
+    "install `kaos-office[xlsx-calamine]` for the Rust fast-path, "
+    "`kaos-office[xlsx-formulas]` for openpyxl-backed formula extraction, "
+    "or the aggregate `kaos-office[xlsx]` for both. "
+    'Alternative: drop `engine="calamine"` and `include_formulas=True` to '
+    "fall back to the native lxml reader, which has no extra deps."
+)
+
+
+def _xlsx_file_not_found(path_str: str) -> str:
+    return (
+        f"XLSX file not found: {path_str}. "
+        "Pass an absolute path, or a path relative to the current working directory. "
+        "If the workbook lives behind a URL or in a VFS, fetch it first (e.g. via "
+        "kaos-source-http-fetch or kaos-core-vfs-read) and pass the resulting "
+        "filesystem path."
+    )
+
+
 class ParseXlsxTool(KaosTool):
     """Parse an XLSX file into a TabularDocument."""
 
@@ -805,7 +829,7 @@ class ParseXlsxTool(KaosTool):
         path_str = inputs["path"]
         path = _validate_xlsx_path(path_str)
         if path is None:
-            return ToolResult.create_error(f"File not found: {path_str}.")
+            return ToolResult.create_error(_xlsx_file_not_found(path_str))
 
         try:
             from kaos_content.serializers.tabular import serialize_tabular_summary
@@ -831,11 +855,14 @@ class ParseXlsxTool(KaosTool):
                 )
             return ToolResult.create_text(summary)
         except ImportError:
-            return ToolResult.create_error(
-                "XLSX requires python-calamine. pip install kaos-office[xlsx]"
-            )
+            return ToolResult.create_error(_XLSX_IMPORT_ERROR)
         except Exception as exc:
-            return ToolResult.create_error(f"XLSX extraction failed: {exc}.")
+            return ToolResult.create_error(
+                f"XLSX extraction failed for {path}: {exc}. "
+                "The file may be password-protected, corrupted, or use an unsupported "
+                "feature. Try kaos-office-xlsx-metadata to inspect the workbook, or "
+                "kaos-office-list-sheets-xlsx to verify it opens at all."
+            )
 
 
 class ListSheetsXlsxTool(KaosTool):
@@ -862,17 +889,20 @@ class ListSheetsXlsxTool(KaosTool):
     ) -> ToolResult:
         path = _validate_xlsx_path(inputs["path"])
         if path is None:
-            return ToolResult.create_error(f"File not found: {inputs['path']}.")
+            return ToolResult.create_error(_xlsx_file_not_found(inputs["path"]))
         try:
             from kaos_office.xlsx.reader import list_sheets
 
             return ToolResult.create_success(output={"sheets": list_sheets(path)})
         except ImportError:
-            return ToolResult.create_error(
-                "XLSX requires python-calamine. pip install kaos-office[xlsx]"
-            )
+            return ToolResult.create_error(_XLSX_IMPORT_ERROR)
         except Exception as exc:
-            return ToolResult.create_error(f"Failed to list sheets: {exc}.")
+            return ToolResult.create_error(
+                f"Failed to list sheets in {path}: {exc}. "
+                "Verify the file is a valid XLSX (not XLS, CSV, or a renamed file). "
+                "Try kaos-office-xlsx-metadata if you only need workbook properties, "
+                "or open the file directly to confirm it isn't corrupted or password-protected."
+            )
 
 
 class GetSheetXlsxTool(KaosTool):
@@ -909,7 +939,7 @@ class GetSheetXlsxTool(KaosTool):
     ) -> ToolResult:
         path = _validate_xlsx_path(inputs["path"])
         if path is None:
-            return ToolResult.create_error(f"File not found: {inputs['path']}.")
+            return ToolResult.create_error(_xlsx_file_not_found(inputs["path"]))
         try:
             from kaos_content.serializers.tabular import serialize_tsv
 
@@ -917,14 +947,21 @@ class GetSheetXlsxTool(KaosTool):
 
             doc = parse_xlsx(path, sheets=[inputs["sheet"]], max_rows=inputs.get("max_rows", 100))
             if not doc.tables:
-                return ToolResult.create_error(f"Sheet '{inputs['sheet']}' not found.")
+                return ToolResult.create_error(
+                    f"Sheet '{inputs['sheet']}' not found in {path}. "
+                    "Sheet names are case-sensitive and may include trailing whitespace. "
+                    "Call kaos-office-list-sheets-xlsx first to see the exact names available."
+                )
             return ToolResult.create_text(serialize_tsv(doc.tables[0]))
         except ImportError:
-            return ToolResult.create_error(
-                "XLSX requires python-calamine. pip install kaos-office[xlsx]"
-            )
+            return ToolResult.create_error(_XLSX_IMPORT_ERROR)
         except Exception as exc:
-            return ToolResult.create_error(f"Failed to extract sheet: {exc}.")
+            return ToolResult.create_error(
+                f"Failed to extract sheet '{inputs['sheet']}' from {path}: {exc}. "
+                "If the sheet uses array formulas or external links, the native reader "
+                'may not support them — retry with kaos-office-parse-xlsx (engine="calamine") '
+                "or use kaos-office-list-sheets-xlsx to confirm the sheet exists."
+            )
 
 
 class XlsxMetadataTool(KaosTool):
@@ -951,7 +988,7 @@ class XlsxMetadataTool(KaosTool):
     ) -> ToolResult:
         path = _validate_xlsx_path(inputs["path"])
         if path is None:
-            return ToolResult.create_error(f"File not found: {inputs['path']}.")
+            return ToolResult.create_error(_xlsx_file_not_found(inputs["path"]))
         try:
             from kaos_content.artifacts import tabular_summary
 
@@ -960,11 +997,14 @@ class XlsxMetadataTool(KaosTool):
             doc = parse_xlsx(path)
             return ToolResult.create_success(output=tabular_summary(doc))
         except ImportError:
-            return ToolResult.create_error(
-                "XLSX requires python-calamine. pip install kaos-office[xlsx]"
-            )
+            return ToolResult.create_error(_XLSX_IMPORT_ERROR)
         except Exception as exc:
-            return ToolResult.create_error(f"Failed to read XLSX metadata: {exc}.")
+            return ToolResult.create_error(
+                f"Failed to read XLSX metadata for {path}: {exc}. "
+                "Confirm the file is a valid .xlsx workbook (not .xls / .xlsm with macros). "
+                "Try kaos-office-list-sheets-xlsx for a lighter probe that returns just the "
+                "sheet inventory without parsing every cell."
+            )
 
 
 # ---------------------------------------------------------------------------

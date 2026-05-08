@@ -1,43 +1,124 @@
-"""Shared test fixtures for kaos-office."""
+"""Shared test fixtures for kaos-office.
+
+Fixture roots (resolution order):
+
+* ``tests/fixtures/{docx,pptx,xlsx}/`` — vendored real documents that
+  ship with this repo. CI and any contributor's checkout always sees
+  them, so the integration suite is reproducible without opt-in.
+* ``KAOS_OFFICE_EXTERNAL_FIXTURES_DIR`` env var — optional override for
+  fixtures too large to vendor (e.g. multi-MB legal decks). If set, it
+  must point at a directory shaped like the vendored layout
+  (``<root>/docx/``, ``<root>/pptx/``, ...). When unset, tests
+  depending on these large fixtures auto-skip.
+
+The legacy ``KELVIN_FIXTURES`` / ``KELVIN_PPTX_FIXTURES`` symbols are
+preserved as aliases for the local fixture directories so existing
+test imports keep working without a sweep.
+"""
 
 from __future__ import annotations
 
 import io
+import os
 import zipfile
 from pathlib import Path
 
 import pytest
 
-KELVIN_FIXTURES = Path(
-    "/home/mjbommar/projects/273v/kelvin-modules/kelvin_office/tests/resources/docx"
-)
+# --- Local (vendored) fixture roots -----------------------------------------
 
-KELVIN_PPTX_FIXTURES = Path(
-    "/home/mjbommar/projects/273v/kelvin-modules/kelvin_office/tests/resources/pptx"
-)
+_LOCAL_FIXTURES_ROOT = Path(__file__).parent / "fixtures"
+LOCAL_DOCX_FIXTURES = _LOCAL_FIXTURES_ROOT / "docx"
+LOCAL_PPTX_FIXTURES = _LOCAL_FIXTURES_ROOT / "pptx"
+LOCAL_XLSX_FIXTURES = _LOCAL_FIXTURES_ROOT / "xlsx"
+PPTX_STRESS_FIXTURES = LOCAL_PPTX_FIXTURES / "stress"
 
-PPTX_STRESS_FIXTURES = Path(__file__).parent / "fixtures" / "pptx" / "stress"
+# Backward-compatible aliases — kept so the integration tests don't
+# need a rename sweep. Both now resolve to the in-repo vendored copies
+# (the same files we used to read from kelvin-modules), not to an
+# absolute path on a developer machine.
+KELVIN_FIXTURES = LOCAL_DOCX_FIXTURES
+KELVIN_PPTX_FIXTURES = LOCAL_PPTX_FIXTURES
 
 
+# --- External (opt-in) fixture root -----------------------------------------
+
+_EXTERNAL_ROOT_ENV = "KAOS_OFFICE_EXTERNAL_FIXTURES_DIR"
+
+
+def external_fixtures_root() -> Path | None:
+    """Return the configured external fixtures root, if any.
+
+    Set via the ``KAOS_OFFICE_EXTERNAL_FIXTURES_DIR`` env var. Used for
+    real documents too large to vendor in-repo (multi-MB decks /
+    contracts). Returns ``None`` when the env var is unset, so callers
+    can use ``pytest.skip(...)`` cleanly.
+    """
+    raw = os.environ.get(_EXTERNAL_ROOT_ENV)
+    if not raw:
+        return None
+    root = Path(raw).expanduser()
+    return root if root.is_dir() else None
+
+
+def external_fixture(*parts: str) -> Path | None:
+    """Resolve a path under the external fixtures root, or ``None``.
+
+    ``parts`` is the relative path within the root (e.g. ``"pptx",
+    "CIPLA_CLEVELAND_BAR_DEC_2023.pptx"``).
+    """
+    root = external_fixtures_root()
+    if root is None:
+        return None
+    candidate = root.joinpath(*parts)
+    return candidate if candidate.is_file() else None
+
+
+# --- Skip helpers -----------------------------------------------------------
+
+
+def has_local_docx_fixtures() -> bool:
+    return LOCAL_DOCX_FIXTURES.is_dir() and any(LOCAL_DOCX_FIXTURES.glob("*.docx"))
+
+
+def has_local_pptx_fixtures() -> bool:
+    return LOCAL_PPTX_FIXTURES.is_dir() and any(LOCAL_PPTX_FIXTURES.glob("*.pptx"))
+
+
+# Backward-compatible names — same shape as before, but the predicate
+# now checks the in-repo vendored fixtures, not a hard-coded user path.
 def has_kelvin_fixtures() -> bool:
-    """Check if kelvin_office test fixtures are available."""
-    return KELVIN_FIXTURES.exists()
+    return has_local_docx_fixtures()
 
 
 def has_kelvin_pptx_fixtures() -> bool:
-    """Check if kelvin_office PPTX test fixtures are available."""
-    return KELVIN_PPTX_FIXTURES.exists()
+    return has_local_pptx_fixtures()
 
 
 skip_no_fixtures = pytest.mark.skipif(
-    not has_kelvin_fixtures(),
-    reason="kelvin_office test fixtures not available",
+    not has_local_docx_fixtures(),
+    reason="vendored DOCX fixtures missing under tests/fixtures/docx/",
 )
 
 skip_no_pptx_fixtures = pytest.mark.skipif(
-    not has_kelvin_pptx_fixtures(),
-    reason="kelvin_office PPTX test fixtures not available",
+    not has_local_pptx_fixtures(),
+    reason="vendored PPTX fixtures missing under tests/fixtures/pptx/",
 )
+
+
+def skip_without_external_fixture(*parts: str) -> pytest.MarkDecorator:
+    """Skip a test unless the named external fixture resolves.
+
+    Set ``KAOS_OFFICE_EXTERNAL_FIXTURES_DIR`` to a directory with the
+    vendored layout (``<root>/docx/``, ``<root>/pptx/``, ...) to
+    enable tests that depend on multi-MB documents.
+    """
+    return pytest.mark.skipif(
+        external_fixture(*parts) is None,
+        reason=(
+            f"external fixture {'/'.join(parts)} unavailable; set ${_EXTERNAL_ROOT_ENV} to enable"
+        ),
+    )
 
 
 def make_minimal_docx(

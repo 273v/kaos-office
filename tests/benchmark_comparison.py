@@ -12,10 +12,15 @@ Run with: uv run python tests/benchmark_comparison.py
 from __future__ import annotations
 
 import importlib
+import os
 import time
 from pathlib import Path
 
-FIXTURES = Path("/home/mjbommar/projects/273v/kelvin-modules/kelvin_office/tests/resources/docx")
+# Default to the in-repo vendored DOCX corpus. Override with
+# KAOS_OFFICE_BENCHMARK_DOCX_DIR if you have a richer external corpus
+# you'd rather measure against.
+_DEFAULT_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "docx"
+FIXTURES = Path(os.environ.get("KAOS_OFFICE_BENCHMARK_DOCX_DIR", str(_DEFAULT_FIXTURES)))
 
 BENCHMARK_FILES = [
     ("MultiParagraphSample.docx", "Simple: paragraphs, formatting, lists, comments"),

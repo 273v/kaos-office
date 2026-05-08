@@ -10,11 +10,31 @@ Run with: uv run python tests/benchmark_real_comparison.py
 from __future__ import annotations
 
 import importlib
+import os
 import time
 from pathlib import Path
 
-DOCX_DIR = Path("/home/mjbommar/projects/273v/kelvin-modules/kelvin_office/tests/resources/docx")
-PPTX_DIR = Path("/home/mjbommar/projects/273v/kelvin-modules/kelvin_office/tests/resources/pptx")
+# Default to the in-repo vendored corpora. Override with
+# KAOS_OFFICE_BENCHMARK_{DOCX,PPTX}_DIR (or
+# KAOS_OFFICE_EXTERNAL_FIXTURES_DIR/<docx|pptx>) for an external
+# corpus.
+_REPO_FIXTURES = Path(__file__).resolve().parent / "fixtures"
+_EXTERNAL_ROOT = os.environ.get("KAOS_OFFICE_EXTERNAL_FIXTURES_DIR")
+
+
+def _benchmark_root(kind: str) -> Path:
+    explicit = os.environ.get(f"KAOS_OFFICE_BENCHMARK_{kind.upper()}_DIR")
+    if explicit:
+        return Path(explicit)
+    if _EXTERNAL_ROOT:
+        candidate = Path(_EXTERNAL_ROOT) / kind
+        if candidate.is_dir():
+            return candidate
+    return _REPO_FIXTURES / kind
+
+
+DOCX_DIR = _benchmark_root("docx")
+PPTX_DIR = _benchmark_root("pptx")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOCX BENCHMARKS

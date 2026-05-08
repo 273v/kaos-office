@@ -215,7 +215,7 @@ def parse_docx(
         OPCPackageError: If the file cannot be opened or parsed.
         OPCSecurityError: If the file fails security validation.
     """
-    path = Path(path)
+    path = Path(path).resolve()
     source_uri = path.as_uri()
 
     with OPCPackage.open(path) as pkg:
@@ -907,8 +907,22 @@ def _handle_table(el: etree._Element, ctx: ParseContext) -> None:
                 if vm is not None:
                     val = vm.get(W_VAL)
                     if val is None or val == "":
-                        # Continue of vertical merge — empty cell
-                        cells.append(Cell(content=(), row_span=0, col_span=col_span))
+                        # Continue of vertical merge — the cell occupies
+                        # its own grid slot but its content lives in the
+                        # "restart" cell above. We tag it so writers /
+                        # downstream consumers can detect the merge
+                        # without a `row_span=0` sentinel (Cell rejects
+                        # spans < 1 since kaos-content 0.1.0a1).
+                        from kaos_content.model.attr import Attr
+
+                        cells.append(
+                            Cell(
+                                content=(),
+                                row_span=1,
+                                col_span=col_span,
+                                attr=Attr(classes=("vmerge-continue",)),
+                            )
+                        )
                         continue
                     # val="restart" means start of vertical merge — row_span computed later
 

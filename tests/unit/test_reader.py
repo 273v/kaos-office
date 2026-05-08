@@ -423,3 +423,60 @@ class TestComments:
         assert len(doc.annotations) == 1
         assert doc.annotations[0].body["text"] == "Please review this section."
         assert doc.annotations[0].body["author"] == "Reviewer"
+
+
+# ──────────────────────── Path handling (KO-001) ────────────────────────
+
+
+class TestRelativePaths:
+    """Regression tests for KO-001: parse_docx must handle relative paths.
+
+    Pre-fix, parse_docx() called Path(path).as_uri() before resolving the
+    path. Path.as_uri() raises ValueError on relative paths, so any caller
+    that handed parse_docx a relative path (e.g., the CLI when invoked
+    against a filename in cwd) crashed before the file was opened.
+    """
+
+    def test_relative_path_string(self, tmp_path, monkeypatch):
+        from kaos_office.docx.reader import parse_docx
+
+        docx_bytes = make_minimal_docx(body_xml="<w:p><w:r><w:t>Hello</w:t></w:r></w:p>")
+        (tmp_path / "rel.docx").write_bytes(docx_bytes)
+
+        monkeypatch.chdir(tmp_path)
+        # Pre-fix: ValueError "relative path can't be expressed as a file URI"
+        doc = parse_docx("rel.docx")
+
+        assert len(doc.body) == 1
+        assert doc.metadata.source is not None
+        assert doc.metadata.source.uri.startswith("file://")
+        # Resolved URI must point at the actual file
+        assert doc.metadata.source.uri.endswith("/rel.docx")
+
+    def test_relative_path_object(self, tmp_path, monkeypatch):
+        from kaos_office.docx.reader import parse_docx
+
+        docx_bytes = make_minimal_docx(body_xml="<w:p><w:r><w:t>Hi</w:t></w:r></w:p>")
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "rel.docx").write_bytes(docx_bytes)
+
+        monkeypatch.chdir(tmp_path)
+        doc = parse_docx(Path("sub/rel.docx"))
+
+        assert len(doc.body) == 1
+        assert doc.metadata.source is not None
+        assert doc.metadata.source.uri.endswith("/sub/rel.docx")
+
+    def test_dot_prefixed_relative_path(self, tmp_path, monkeypatch):
+        from kaos_office.docx.reader import parse_docx
+
+        docx_bytes = make_minimal_docx(body_xml="<w:p><w:r><w:t>Hi</w:t></w:r></w:p>")
+        (tmp_path / "rel.docx").write_bytes(docx_bytes)
+
+        monkeypatch.chdir(tmp_path)
+        doc = parse_docx("./rel.docx")
+
+        assert len(doc.body) == 1
+        assert doc.metadata.source is not None
+        assert "/./" not in doc.metadata.source.uri  # resolved, not literal
+        assert doc.metadata.source.uri.endswith("/rel.docx")

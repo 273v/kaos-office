@@ -40,7 +40,10 @@ from kaos_core.logging import get_logger
 logger = get_logger(__name__)
 
 _CALAMINE_IMPORT_ERROR = (
-    "python-calamine is required for XLSX extraction. Install with: pip install kaos-office[xlsx]"
+    "python-calamine is required for the calamine XLSX engine. "
+    "Install with: pip install 'kaos-office[xlsx-calamine]' (or the aggregate "
+    "'kaos-office[xlsx]'). The default native reader does NOT require this — "
+    'drop `engine="calamine"` to fall back to lxml.'
 )
 try:
     _python_calamine = importlib.import_module("python_calamine")

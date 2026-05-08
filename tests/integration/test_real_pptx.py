@@ -10,7 +10,9 @@ import pytest
 from tests.conftest import (
     KELVIN_PPTX_FIXTURES,
     PPTX_STRESS_FIXTURES,
+    external_fixture,
     skip_no_pptx_fixtures,
+    skip_without_external_fixture,
 )
 
 
@@ -127,9 +129,14 @@ class TestTestimony:
         assert len(md) > 3000
 
 
-@skip_no_pptx_fixtures
+@skip_without_external_fixture("pptx", "CIPLA_CLEVELAND_BAR_DEC_2023.pptx")
 class TestLargePresentation:
-    """Test CIPLA_CLEVELAND_BAR_DEC_2023.pptx — 59 slides, large file."""
+    """Test CIPLA_CLEVELAND_BAR_DEC_2023.pptx — 59 slides, ~11 MB.
+
+    Too large to vendor; opt in by pointing
+    ``KAOS_OFFICE_EXTERNAL_FIXTURES_DIR`` at a directory containing
+    ``pptx/CIPLA_CLEVELAND_BAR_DEC_2023.pptx``.
+    """
 
     def test_parse_performance(self):
         """Large file should parse in under 5 seconds."""
@@ -137,7 +144,8 @@ class TestLargePresentation:
 
         from kaos_office.pptx.reader import parse_pptx
 
-        path = KELVIN_PPTX_FIXTURES / "CIPLA_CLEVELAND_BAR_DEC_2023.pptx"
+        path = external_fixture("pptx", "CIPLA_CLEVELAND_BAR_DEC_2023.pptx")
+        assert path is not None  # guarded by class-level skip
         t0 = time.perf_counter()
         doc = parse_pptx(path)
         elapsed = time.perf_counter() - t0
@@ -148,7 +156,8 @@ class TestLargePresentation:
     def test_slide_listing(self):
         from kaos_office.pptx.reader import list_slides
 
-        path = KELVIN_PPTX_FIXTURES / "CIPLA_CLEVELAND_BAR_DEC_2023.pptx"
+        path = external_fixture("pptx", "CIPLA_CLEVELAND_BAR_DEC_2023.pptx")
+        assert path is not None  # guarded by class-level skip
         slides = list_slides(path)
         assert len(slides) == 59
 

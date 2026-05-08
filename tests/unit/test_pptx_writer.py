@@ -390,6 +390,87 @@ class TestErrorHandling:
 
 
 # ---------------------------------------------------------------------------
+# KO-002: Lazy wrappers must be callable, not None, and must raise a
+# clean ImportError with the [pptx] install hint when python-pptx is
+# missing. Pre-fix kaos_office.pptx exposed write_pptx / write_pptx_bytes
+# as `None` when the extra was absent and ty rightly flagged the
+# assignment as type-incompatible.
+# ---------------------------------------------------------------------------
+
+
+class TestPptxLazyWrappers:
+    def test_wrappers_are_callable_not_none(self) -> None:
+        import kaos_office.pptx as pkg
+
+        assert pkg.write_pptx is not None
+        assert pkg.write_pptx_bytes is not None
+        assert callable(pkg.write_pptx)
+        assert callable(pkg.write_pptx_bytes)
+
+    def test_wrappers_proxy_to_writer(self, tmp_path: Path) -> None:
+        # The wrapper must produce identical output to calling the writer
+        # module directly when python-pptx is installed.
+        import kaos_office.pptx as pkg
+        from kaos_office.pptx.writer import write_pptx_bytes as _impl
+
+        doc = ContentDocument(
+            metadata=DocumentMetadata(title="proxy"),
+            body=(Paragraph(children=(Text(value="hello"),)),),
+        )
+
+        wrapper_bytes = pkg.write_pptx_bytes(doc)
+        impl_bytes = _impl(doc)
+
+        # Compare structural parts (timestamps in core.xml drift between
+        # calls, but the slide content list is stable).
+        assert sorted(_zip_parts(wrapper_bytes)) == sorted(_zip_parts(impl_bytes))
+
+    def test_missing_python_pptx_raises_import_error_with_hint(self, monkeypatch) -> None:
+        # Simulate python-pptx being absent by making the writer module
+        # raise ImportError on import, then verify the wrapper translates
+        # it to a typed ImportError carrying the [pptx] install hint.
+        import builtins
+        import importlib
+        import sys
+
+        # Forget any cached writer module so the next import re-executes.
+        sys.modules.pop("kaos_office.pptx.writer", None)
+        # Also forget the parent so we can re-import a fresh copy below.
+        sys.modules.pop("kaos_office.pptx", None)
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "kaos_office.pptx.writer" or name.startswith("pptx"):
+                raise ImportError("No module named 'pptx'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        pkg = importlib.import_module("kaos_office.pptx")
+
+        try:
+            pkg.write_pptx(
+                ContentDocument(
+                    metadata=DocumentMetadata(title=""),
+                    body=(Paragraph(children=(Text(value="x"),)),),
+                ),
+                "/tmp/never-written.pptx",
+            )
+        except ImportError as exc:
+            assert "kaos-office[pptx]" in str(exc)
+            assert "python-pptx" in str(exc)
+        else:
+            raise AssertionError("expected ImportError when python-pptx is absent")
+
+        # Restore real import + drop the bogus module so other tests
+        # (which rely on the real writer) pick the real one back up.
+        monkeypatch.setattr(builtins, "__import__", real_import)
+        sys.modules.pop("kaos_office.pptx", None)
+        sys.modules.pop("kaos_office.pptx.writer", None)
+
+
+# ---------------------------------------------------------------------------
 # Performance
 # ---------------------------------------------------------------------------
 

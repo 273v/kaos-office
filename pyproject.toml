@@ -38,14 +38,17 @@ nlp = ["kaos-nlp-core>=0.1.0"]
 pptx = [
     "python-pptx>=1.0",
 ]
+# Aggregate extra — covers the calamine fast path + openpyxl formula
+# extraction. The default native lxml reader needs neither.
+xlsx = [
+    "python-calamine>=0.6",
+    "openpyxl>=3.1",
+]
 xlsx-calamine = [
     "python-calamine>=0.6",
 ]
 xlsx-formulas = [
     "openpyxl>=3.1",
-]
-xlsx-write = [
-    "xlsxwriter>=3.2",  # dev/test aid only — production uses native lxml writer
 ]
 
 [dependency-groups]

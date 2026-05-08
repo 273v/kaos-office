@@ -1,19 +1,15 @@
-"""XLSX writer — TabularDocument to Excel spreadsheet.
+"""XLSX writer — reference implementation kept for cross-validation.
 
-Uses xlsxwriter (BSD-2-Clause, zero deps, streaming architecture)
-for standards-compliant XLSX generation with proper date formats,
-number formats, and column type mapping.
+Production code uses :mod:`kaos_office.xlsx.writer` (native lxml,
+zero extra deps). This module wraps ``xlsxwriter`` (BSD-2-Clause) and
+is kept as an independent encoder against which the native writer's
+output is differentially validated in tests. It is not part of the
+published surface.
 
-Requires the ``[xlsx-write]`` optional extra::
-
-    pip install kaos-office[xlsx-write]
-
-Usage::
-
-    from kaos_office.xlsx.writer import write_xlsx, write_xlsx_bytes
-
-    write_xlsx(tabular_doc, "output.xlsx")
-    xlsx_bytes = write_xlsx_bytes(tabular_doc)
+``xlsxwriter`` is a dev-only dependency (declared in
+``[dependency-groups].dev``). It used to ship as the public
+``[xlsx-write]`` extra; that extra was removed in 0.1.0a1 because
+production never depended on this code path.
 """
 
 from __future__ import annotations
@@ -63,9 +59,11 @@ def write_xlsx(
         import xlsxwriter
     except ImportError as exc:
         msg = (
-            "xlsxwriter is not installed. "
-            "Fix: pip install kaos-office[xlsx-write]. "
-            "Alternative: use serialize_csv() from kaos-content for CSV output."
+            "xlsxwriter is not installed. This module is the dev-only reference "
+            "writer used for cross-validation; it is not in any published extra. "
+            "Install via the dev group: `uv sync --group dev`. "
+            "For production use, call kaos_office.xlsx.writer (native lxml, no "
+            "extra deps) or use serialize_csv() from kaos-content for CSV output."
         )
         raise ImportError(msg) from exc
 
@@ -106,9 +104,11 @@ def write_xlsx_bytes(
         import xlsxwriter
     except ImportError as exc:
         msg = (
-            "xlsxwriter is not installed. "
-            "Fix: pip install kaos-office[xlsx-write]. "
-            "Alternative: use serialize_csv() from kaos-content for CSV output."
+            "xlsxwriter is not installed. This module is the dev-only reference "
+            "writer used for cross-validation; it is not in any published extra. "
+            "Install via the dev group: `uv sync --group dev`. "
+            "For production use, call kaos_office.xlsx.writer (native lxml, no "
+            "extra deps) or use serialize_csv() from kaos-content for CSV output."
         )
         raise ImportError(msg) from exc
 
