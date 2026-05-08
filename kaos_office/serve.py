@@ -28,7 +28,13 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         from kaos_core import KaosRuntime
-        from kaos_mcp import KaosMCPServer, KaosMCPSettings
+
+        # `kaos_mcp` resolves only when the `[mcp]` extra is installed.
+        # The extra is intentionally absent at 0.1.0a1 because `kaos-mcp`
+        # is not yet on PyPI, so ty cannot statically resolve the import
+        # in the per-module repo. The runtime ImportError below handles
+        # the missing-package case at call time.
+        from kaos_mcp import KaosMCPServer, KaosMCPSettings  # ty: ignore[unresolved-import]
     except ImportError:
         print(
             "Error: MCP server requires the 'mcp' extra.\n"

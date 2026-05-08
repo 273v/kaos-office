@@ -50,15 +50,13 @@ dependencies = [
 kaos-office = "kaos_office.cli:main"
 kaos-office-serve = "kaos_office.serve:main"
 
-# In the monorepo workspace these extras resolve through
-# `[tool.uv.sources]` below to the editable sibling source. The
-# per-module `273v/kaos-office` repo strips the `[mcp]` extra at
-# 0.1.0a1 because `kaos-mcp` isn't on PyPI yet (uv lock is strict and
-# refuses to resolve any declared extra whose package is not
-# resolvable). `[mcp]` will return once `kaos-mcp` ships on PyPI.
-# See docs/oss/checklists/per-package-release.md (F009 #4).
+# `[mcp]` extra is intentionally absent at 0.1.0a1 because `kaos-mcp`
+# is not yet on PyPI and `uv lock` refuses to resolve any declared
+# extra whose package is not resolvable (F009 #4). It will return at
+# `0.1.0a2` once `kaos-mcp` ships. The corresponding entry in the
+# monorepo's pyproject.toml is preserved for editable resolution
+# through `[tool.uv.sources]` there.
 [project.optional-dependencies]
-mcp = ["kaos-mcp>=0.1.0"]
 nlp = ["kaos-nlp-core>=0.1.0a2,<0.2"]
 pptx = [
     "python-pptx>=1.0",
@@ -77,18 +75,20 @@ xlsx-formulas = [
 ]
 
 [dependency-groups]
+# Sibling deps that aren't yet on PyPI (kaos-mcp, kaos-pdf cross-validator
+# tests) are stripped here at 0.1.0a1 — re-add at 0.1.0a2 once they ship.
+# kaos-nlp-core is on PyPI so it stays for the [nlp]-extra integration tests.
 dev = [
-  "kaos-mcp>=0.1.0",
-  "kaos-nlp-core>=0.1.0",
-  "kaos-pdf>=0.1.0",
+  "kaos-nlp-core>=0.1.0a2,<0.2",
   "python-pptx>=1.0",
   "python-calamine>=0.6",
+  "openpyxl>=3.1",
   "xlsxwriter>=3.2",
   "pytest>=8.3.5",
   "pytest-asyncio>=0.26.0",
   "pytest-cov>=6.0.0",
-  "ruff>=0.11.0",
-  "ty>=0.0.1a17",
+  "ruff>=0.15.12",
+  "ty>=0.0.34,<0.1",
 ]
 
 [project.urls]
@@ -165,13 +165,23 @@ known-first-party = ["kaos_office"]
 
 [tool.ty.src]
 include = ["kaos_office", "tests"]
+# Test + benchmark files that import siblings stripped from the
+# per-module repo's 0.1.0a1 release because the underlying packages
+# aren't on PyPI yet, plus benchmark scripts that import optional
+# third-party tools (mammoth, markitdown, docling) for head-to-head
+# comparisons. Runtime imports are gated behind import-error catches
+# or pytest.importorskip; ty resolves modules statically and would
+# otherwise emit unresolved-import errors. Re-include the
+# integration/test_mcp_*_pipeline.py and test_live_verification.py
+# files once kaos-mcp / kaos-pdf ship and the [mcp] extra returns at
+# 0.1.0a2.
+exclude = [
+  "tests/benchmark_comparison.py",
+  "tests/benchmark_real_comparison.py",
+  "tests/integration/test_live_verification.py",
+  "tests/integration/test_mcp_office_pipeline.py",
+  "tests/integration/test_mcp_xlsx_pipeline.py",
+]
 
 [tool.uv]
 package = true
-
-[tool.uv.sources]
-kaos-content = { path = "../kaos-content", editable = true }
-kaos-core = { path = "../kaos-core", editable = true }
-kaos-mcp = { path = "../kaos-mcp", editable = true }
-kaos-nlp-core = { path = "../kaos-nlp-core", editable = true }
-kaos-pdf = { path = "../kaos-pdf", editable = true }
