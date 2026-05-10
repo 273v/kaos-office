@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to ``tempfile.mkstemp(suffix=".docx")`` so the path lives under
   ``%TEMP%`` on Windows and ``/tmp`` on POSIX. No production code
   change. Files: ``tests/unit/test_reader.py``.
+### Security
+
+- **vulture (dead-code scan) now runs in pre-commit + CI alongside
+  the existing bandit job.** New `vulture` hook in
+  ``.pre-commit-config.yaml`` mirrored by a new ``vulture (dead-code
+  scan)`` job in ``security.yml``. `--min-confidence 100` with the
+  shared `--ignore-names` list for names vulture can't infer from
+  the import graph (framework callbacks, OAuth/OIDC field names,
+  signal handlers, MCP `_meta` keys). Also lands the existing
+  bandit hook in pre-commit (it was only in CI before). Both pass
+  clean. Mirrors the rollout from kaos-core.
 
 ## [0.1.0a2] — 2026-05-08
 
