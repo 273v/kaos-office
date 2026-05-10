@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,16 +21,26 @@ R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 
 def _parse_from_body(body_xml: str, **kwargs) -> ContentDocument:
-    """Helper: create a DOCX from body XML and parse it."""
+    """Helper: create a DOCX from body XML and parse it.
+
+    Uses ``tempfile.NamedTemporaryFile`` so the path is portable across
+    POSIX and Windows. The previous hardcoded ``Path("/tmp/...")``
+    resolved to ``\\tmp\\test_reader.docx`` (a non-existent drive-root
+    path) on Windows runners.
+    """
     from kaos_office.docx.reader import parse_docx
 
     docx_bytes = make_minimal_docx(body_xml=body_xml, **kwargs)
-    tmp = Path("/tmp/test_reader.docx")
-    tmp.write_bytes(docx_bytes)
+    # mkstemp gives us a path that's portable across POSIX and Windows
+    # (under the system tempdir). We own cleanup explicitly.
+    fd, path_str = tempfile.mkstemp(suffix=".docx")
+    path = Path(path_str)
     try:
-        return parse_docx(tmp)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(docx_bytes)
+        return parse_docx(path)
     finally:
-        tmp.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
 
 
 # ──────────────────────────── Paragraphs ────────────────────────────

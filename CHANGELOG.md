@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tests: Windows-x64 leg failed on hardcoded POSIX tempfile path.**
+  ``tests/unit/test_reader.py::_parse_from_body`` wrote its synthetic
+  DOCX to ``Path("/tmp/test_reader.docx")``. On Windows this resolved
+  to ``\\tmp\\test_reader.docx`` (a non-existent drive-root path) so
+  every DOCX reader test failed with ``FileNotFoundError``. Switched
+  to ``tempfile.mkstemp(suffix=".docx")`` so the path lives under
+  ``%TEMP%`` on Windows and ``/tmp`` on POSIX. No production code
+  change. Files: ``tests/unit/test_reader.py``.
+
 ## [0.1.0a2] — 2026-05-08
 
 CI supply-chain hardening (audit-02 F7) and SECURITY.md polish (audit-02
