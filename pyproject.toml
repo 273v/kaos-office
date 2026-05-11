@@ -54,13 +54,12 @@ dependencies = [
 kaos-office = "kaos_office.cli:main"
 kaos-office-serve = "kaos_office.serve:main"
 
-# `[mcp]` extra is intentionally absent at 0.1.0a1 because `kaos-mcp`
-# is not yet on PyPI and `uv lock` refuses to resolve any declared
-# extra whose package is not resolvable (F009 #4). It will return at
-# `0.1.0a2` once `kaos-mcp` ships. The corresponding entry in the
-# monorepo's pyproject.toml is preserved for editable resolution
-# through `[tool.uv.sources]` there.
+# [mcp] extra restored at 0.1.0a3 — kaos-mcp is on PyPI as of 0.1.0a3.
+# (The 0.1.0a1 release intentionally omitted the extra because uv lock
+# refuses to resolve any declared extra whose package isn't on PyPI yet;
+# F009 #4. Now resolvable.)
 [project.optional-dependencies]
+mcp = ["kaos-mcp>=0.1.0a3,<0.2"]
 nlp = ["kaos-nlp-core>=0.1.0a2,<0.2"]
 pptx = [
     "python-pptx>=1.0",

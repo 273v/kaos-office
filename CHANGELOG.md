@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`[mcp]` extra restored.** kaos-office's pyproject originally
+  declared the `[mcp]` extra absent at 0.1.0a1 because `kaos-mcp`
+  wasn't on PyPI yet and `uv lock` refuses to resolve unresolvable
+  declared extras (F009 #4). `kaos-mcp` shipped (now at 0.1.0a3), so
+  the extra is back: `pip install kaos-office[mcp]` (or
+  `uv add kaos-office[mcp]`) now pulls in
+  `kaos-mcp>=0.1.0a3,<0.2` for the FastMCP-backed
+  `kaos-office-serve` runner and the MCP integration tests.
+
+### Fixed
+
+- **CI: nightly integration tests now install the `mcp` extra.** The
+  scheduled-only `integration tests` job in `security.yml` failed
+  collection on `test_mcp_office_pipeline.py` /
+  `test_mcp_xlsx_pipeline.py` with
+  `ModuleNotFoundError: No module named 'kaos_mcp'` because the
+  job ran `uv sync --group dev` without the (then-missing) extra.
+  Now syncs with `--group dev --extra mcp` so the MCP-bridge tests
+  can import `kaos_mcp`. Push/PR runs are unchanged (the integration
+  job is `if: github.event_name == 'schedule' || workflow_dispatch`).
+
+
 ### Fixed
 
 - **Tests: Windows-x64 leg failed on hardcoded POSIX tempfile path.**
