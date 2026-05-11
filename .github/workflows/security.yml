@@ -146,7 +146,11 @@ jobs:
         run: uv python install 3.13
 
       - name: Sync dependencies
-        run: uv sync --group dev --python 3.13
+        # `--extra mcp` brings in kaos-mcp so the
+        # `test_mcp_office_pipeline.py` / `test_mcp_xlsx_pipeline.py`
+        # integration tests can `import kaos_mcp`. The extra was
+        # restored at 0.1.0a3 (see pyproject.toml).
+        run: uv sync --group dev --extra mcp --python 3.13
 
       - name: Run integration tests
         run: uv run pytest tests/integration/ -q --no-cov
