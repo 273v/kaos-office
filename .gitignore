@@ -14,8 +14,3 @@ dist/
 build/
 htmlcov/
 coverage.xml
-# uv.lock is gitignored at v0.1.0a1 because the dev group used to
-# carry sibling packages (kaos-mcp, kaos-pdf) that aren't on PyPI yet
-# and `uv lock` refuses to resolve them. Re-track the lockfile when
-# those siblings ship and the [mcp] extra returns at 0.1.0a2.
-uv.lock
