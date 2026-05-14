@@ -46,6 +46,7 @@ from kaos_office.tools import (
     XlsxMetadataTool,
     register_office_tools,
 )
+from kaos_office.xlsx.reader import parse_xlsx
 
 
 def extract_to_markdown(path: str | Path, **kwargs: object) -> str:
@@ -86,8 +87,6 @@ def extract_to_markdown(path: str | Path, **kwargs: object) -> str:
     if ext in (".xlsx", ".xlsm", ".xls"):
         from kaos_content.serializers.tabular import serialize_tabular_markdown
 
-        from kaos_office.xlsx.reader import parse_xlsx
-
         doc = parse_xlsx(p, **kwargs)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
         return serialize_tabular_markdown(doc)
 
@@ -122,6 +121,7 @@ __all__ = [
     "extract_to_markdown",
     "parse_docx",
     "parse_pptx",
+    "parse_xlsx",
     "register_office_tools",
     "search_document",
 ]
