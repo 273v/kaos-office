@@ -44,6 +44,8 @@ from kaos_office.tools import (
     WritePptxTool,
     WriteXlsxTool,
     XlsxMetadataTool,
+    register_office_authoring_tools,
+    register_office_documents_tools,
     register_office_tools,
 )
 from kaos_office.xlsx.reader import parse_xlsx
@@ -122,6 +124,8 @@ __all__ = [
     "parse_docx",
     "parse_pptx",
     "parse_xlsx",
+    "register_office_authoring_tools",
+    "register_office_documents_tools",
     "register_office_tools",
     "search_document",
 ]

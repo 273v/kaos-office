@@ -1358,8 +1358,15 @@ class WriteXlsxTool(KaosTool):
         return _write_success_result(out, "xlsx", extra)
 
 
-def register_office_tools(runtime: KaosRuntime) -> int:
-    """Register all Office MCP tools with a runtime."""
+def register_office_documents_tools(runtime: KaosRuntime) -> int:
+    """Register the 14 read-only Office MCP tools.
+
+    DOCX, PPTX, and XLSX parsers, metadata inspectors, listers, and
+    BM25 searchers — every tool that takes an Office document and
+    returns text, structure, metadata, or a derived view *without*
+    producing a new artifact. Pins the SessionToolSet ``documents``
+    group entry point.
+    """
     tools: list[KaosTool] = [
         ParseDocxTool(),
         GetDocxTextTool(),
@@ -1375,6 +1382,22 @@ def register_office_tools(runtime: KaosRuntime) -> int:
         ListSheetsXlsxTool(),
         GetSheetXlsxTool(),
         XlsxMetadataTool(),
+    ]
+    for tool in tools:
+        runtime.tools.register_tool(tool)
+    return len(tools)
+
+
+def register_office_authoring_tools(runtime: KaosRuntime) -> int:
+    """Register the 3 Office authoring (writer) MCP tools.
+
+    DOCX, PPTX, and XLSX writers — they serialize a
+    ``ContentDocument`` / ``TabularDocument`` to a new Office
+    artifact. Pins the SessionToolSet ``authoring`` group entry
+    point: denied by default at the ceiling and opted into
+    per-session for drafting workflows.
+    """
+    tools: list[KaosTool] = [
         WriteDocxTool(),
         WritePptxTool(),
         WriteXlsxTool(),
@@ -1382,3 +1405,17 @@ def register_office_tools(runtime: KaosRuntime) -> int:
     for tool in tools:
         runtime.tools.register_tool(tool)
     return len(tools)
+
+
+def register_office_tools(runtime: KaosRuntime) -> int:
+    """Register all Office MCP tools with a runtime.
+
+    Backward-compatible union of
+    :func:`register_office_documents_tools` (14 read-only) and
+    :func:`register_office_authoring_tools` (3 writers). Existing
+    callers continue to see the same 17 tools with the same names
+    and schemas.
+    """
+    count = register_office_documents_tools(runtime)
+    count += register_office_authoring_tools(runtime)
+    return count
