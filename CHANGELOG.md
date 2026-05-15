@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a4] — 2026-05-15
+
+### Added — documents + authoring registration entry points (PRD PR 1)
+
+- **`register_office_documents_tools(runtime)`** — registers the 14
+  read-only Office tools (DOCX / PPTX / XLSX parsers, listers,
+  getters, metadata inspectors, BM25 searchers). Pins the
+  SessionToolSet `documents` group entry point.
+- **`register_office_authoring_tools(runtime)`** — registers the 3
+  Office writers (`kaos-office-write-docx` /
+  `kaos-office-write-pptx` / `kaos-office-write-xlsx`). Pins the
+  SessionToolSet `authoring` group entry point: denied by default
+  at the ceiling and opted into per-session for drafting workflows.
+- **`register_office_tools(runtime)`** is now a backward-compatible
+  union — every existing caller continues to see the same 17 tools
+  with the same names and schemas.
+
+Motivated by `kaos-modules/docs/internal/dynamic-tool-planning-prd.md`
+§4 ("PR 1 — catalog expansion"). Purely additive: no tool name,
+schema, or behavior changes.
+
 ## [0.1.0a3] — 2026-05-15
 
 ### Fixed

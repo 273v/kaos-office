@@ -220,6 +220,61 @@ class TestRegisterIncludesWriters:
         assert "kaos-office-write-pptx" in names
         assert "kaos-office-write-xlsx" in names
 
+    def test_register_office_authoring_subset(self) -> None:
+        """`register_office_authoring_tools` registers only the 3 writers.
+
+        Pins the SessionToolSet ``authoring`` group entry point: a
+        caller that wants drafting workflows opts into this without
+        also exposing every parser. The 3 writers carry
+        ``readOnlyHint=False`` annotations.
+        """
+        from unittest.mock import MagicMock
+
+        from kaos_office.tools import register_office_authoring_tools
+
+        runtime = MagicMock()
+        count = register_office_authoring_tools(runtime)
+        assert count == 3
+        registered = [c.args[0] for c in runtime.tools.register_tool.call_args_list]
+        names = {t.metadata.name for t in registered}
+        assert names == {
+            "kaos-office-write-docx",
+            "kaos-office-write-pptx",
+            "kaos-office-write-xlsx",
+        }
+        for tool in registered:
+            assert tool.metadata.annotations is not None
+            assert tool.metadata.annotations.readOnlyHint is False, (
+                f"{tool.metadata.name} is in the authoring group but is read-only"
+            )
+
+    def test_register_office_documents_subset(self) -> None:
+        """`register_office_documents_tools` registers the 14 read-only tools.
+
+        Pins the SessionToolSet ``documents`` group entry point: every
+        parser, lister, getter, metadata inspector, and searcher.
+        Writers stay out of this list.
+        """
+        from unittest.mock import MagicMock
+
+        from kaos_office.tools import register_office_documents_tools
+
+        runtime = MagicMock()
+        count = register_office_documents_tools(runtime)
+        assert count == 14
+        registered = [c.args[0] for c in runtime.tools.register_tool.call_args_list]
+        names = {t.metadata.name for t in registered}
+        # No writer leaked.
+        assert not any(name.startswith("kaos-office-write-") for name in names)
+        # Spot-check a few of the 14 readers.
+        for required in (
+            "kaos-office-parse-docx",
+            "kaos-office-parse-pptx",
+            "kaos-office-parse-xlsx",
+            "kaos-office-search",
+        ):
+            assert required in names, f"missing read-only tool: {required}"
+
 
 class TestWriterArtifactRegistration:
     """When a runtime is available, writer tools also register output as an artifact."""
