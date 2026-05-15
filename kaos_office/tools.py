@@ -812,6 +812,7 @@ class ParseXlsxTool(KaosTool):
                     type="array",
                     description="Sheet names to extract. Default: all visible.",
                     required=False,
+                    constraints={"items": {"type": "string"}},
                 ),
                 ParameterSchema(
                     name="header_row",
