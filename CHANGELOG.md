@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`kaos-office-parse-xlsx`'s `sheets` parameter now declares its
+  element type.** Previously the schema was `type=array` with no
+  `items`, which OpenAI's strict JSON Schema validator rejected
+  with HTTP 400 `invalid_function_parameters`. The whole tool
+  catalog for the turn was lost. Now `items: {type: "string"}` so
+  the LLM gets a precise contract for sheet names. kaos-core
+  0.1.0a7's defensive `items: {}` floor is belt + suspenders.
+
 ### Added
 
 - **`[mcp]` extra restored.** kaos-office's pyproject originally
