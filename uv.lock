@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-05-14T23:38:47.911309184Z"
+exclude-newer = "2026-05-14T23:55:28.847298288Z"
 exclude-newer-span = "PT72H"
 
 [options.exclude-newer-package]
@@ -382,11 +382,15 @@ markdown = [
 [[package]]
 name = "kaos-core"
 version = "0.1.0a9"
-source = { git = "https://github.com/273v/kaos-core.git?rev=4e576083cfd464b93ab20da5d3aca4187a97b59a#4e576083cfd464b93ab20da5d3aca4187a97b59a" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4f/bd/f661c547e313c96d694c072d527b62c4ba10722bdd9d5b162d3087ba24c8/kaos_core-0.1.0a9.tar.gz", hash = "sha256:60904ac9aac8eaf768651cee5ca2b66999b45b0c04b685b925c354933e313387", size = 183289, upload-time = "2026-05-17T23:30:53.322Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/72/433d17c00df749cb1631ca900ba46c210e4b56c0c8e58eabd8fdf5881032/kaos_core-0.1.0a9-py3-none-any.whl", hash = "sha256:1468cec6127e75ecc6f15594d3151e7f2e2fd14f889d7811f52c4064221c66f3", size = 142214, upload-time = "2026-05-17T23:30:51.953Z" },
 ]
 
 [[package]]
@@ -469,7 +473,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "kaos-content", extras = ["markdown"], specifier = ">=0.1.0a1,<0.2" },
-    { name = "kaos-core", git = "https://github.com/273v/kaos-core.git?rev=4e576083cfd464b93ab20da5d3aca4187a97b59a" },
+    { name = "kaos-core", specifier = ">=0.1.0a9,<0.2" },
     { name = "kaos-mcp", marker = "extra == 'mcp'", specifier = ">=0.1.0a3,<0.2" },
     { name = "kaos-nlp-core", marker = "extra == 'nlp'", specifier = ">=0.1.0a2,<0.2" },
     { name = "lxml", specifier = ">=5.3" },
