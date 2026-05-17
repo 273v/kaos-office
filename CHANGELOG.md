@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **All 15 file-input MCP tools now route their `path` parameter
+  through `kaos_core.path_resolver.resolve_input_path()`** via a new
+  internal adapter `kaos_office._path_resolver.resolve_office_input()`.
+  Previously every tool ran `Path(path_str).exists()` against the
+  process CWD, which made files uploaded into `KaosRuntime.vfs` by a
+  host UI (e.g. `kaos-ui`'s single-user-chat SPA) invisible — agents
+  saw an unbroken sequence of "File not found" errors and were at risk
+  of hallucinating answers from zero successful reads. Affected tools:
+  `kaos-office-parse-docx`, `kaos-office-get-text`,
+  `kaos-office-get-markdown`, `kaos-office-metadata`,
+  `kaos-office-search` (DOCX); `kaos-office-parse-pptx`,
+  `kaos-office-list-slides`, `kaos-office-get-slide`,
+  `kaos-office-search-pptx`, `kaos-office-get-slide-notes` (PPTX);
+  `kaos-office-parse-xlsx`, `kaos-office-list-sheets-xlsx`,
+  `kaos-office-get-sheet-xlsx`, `kaos-office-xlsx-metadata` (XLSX);
+  and `kaos-office-write-pptx`'s optional `template_path`. Each tool's
+  `path` schema description now advertises that
+  `kaos://artifacts/<id>` URIs and session-VFS paths are accepted in
+  addition to filesystem paths. Parse-* tools that materialise a new
+  derived artifact now thread `source_artifact_id` / `source_body_uri`
+  into their `structuredContent` when the input came from the
+  artifact store, so the SPA's ArtifactCard renders the original
+  upload's id rather than a fresh derived one. Stage 1 of
+  `kaos-modules/docs/plans/vfs-blind-tools-audit-and-fix-plan.md` —
+  upstream fix for the production hallucination incident where every
+  SPA-uploaded `.docx` was invisible to the entire office tool set.
+  Behavior for absolute filesystem paths is unchanged (the resolver's
+  filesystem branch is a passthrough). New unit tests:
+  `tests/unit/test_vfs_path_resolution.py` (15 cases — one per
+  affected read tool plus the WritePptx template path).
+- **Pinned `kaos-core>=0.1.0a9,<0.2`** (was `>=0.1.0a1`). The 0.1.0a9
+  release ships `kaos_core.path_resolver`, which the new adapter
+  depends on.
+
 ## [0.1.0a4] — 2026-05-15
 
 ### Added — documents + authoring registration entry points (PRD PR 1)
