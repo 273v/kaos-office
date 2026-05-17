@@ -2,6 +2,25 @@
 
 KaosTool implementations for DOCX and PPTX parsing, text extraction, search,
 and metadata. Registered via register_office_tools(runtime).
+
+Every file-input tool routes its ``path`` parameter through
+:func:`kaos_office._path_resolver.resolve_office_input` which delegates
+to :func:`kaos_core.path_resolver.resolve_input_path`. That covers four
+input shapes the agent might pass:
+
+* ``kaos://artifacts/<uuid>`` — artifact-store lookup scoped to the
+  caller's ``session_id``.
+* ``kaos://<scheme>/<path>`` — VFS read scoped to ``context.session_id``.
+* relative path that exists in the session VFS — VFS read.
+* absolute filesystem path — direct disk read (CLI / tests / trusted
+  callers).
+
+Without that routing, files uploaded into ``KaosRuntime.vfs`` by a UI
+host (e.g. ``kaos-ui``'s single-user-chat SPA) are invisible to the
+tools because raw ``Path(p).exists()`` resolves against the CWD, not
+the session VFS. See
+``kaos-modules/docs/plans/vfs-blind-tools-audit-and-fix-plan.md`` for
+the production post-mortem.
 """
 
 from __future__ import annotations
@@ -10,9 +29,16 @@ from pathlib import Path
 from typing import Any
 
 from kaos_core import KaosContext, KaosRuntime, KaosTool, ToolMetadata, ToolResult
+from kaos_core.path_resolver import ResolvedOrigin
 from kaos_core.types.annotations import ToolAnnotations
 from kaos_core.types.enums import ToolCapability, ToolCategory
 from kaos_core.types.parameters import ParameterSchema
+
+from kaos_office._path_resolver import (
+    InputPathResolutionError,
+    ResolvedInput,
+    resolve_office_input,
+)
 
 _MODULE = "kaos-office"
 _VERSION = "0.1.0"
@@ -35,21 +61,52 @@ _OFFICE_WRITE_ANNOTATIONS = ToolAnnotations(
     openWorldHint=True,
 )
 
+# Shared path-parameter description fragments. The "what to pass" line
+# is what tells the agent that artifact URIs and VFS paths are
+# first-class inputs — without it, agents default to absolute
+# filesystem paths and miss SPA-uploaded files entirely.
+_DOCX_PATH_DESC = (
+    "Path to the DOCX file. Accepts an absolute filesystem path, a "
+    "kaos://artifacts/<id> URI returned by a previous tool, or a "
+    "relative path that resolves inside the session VFS (e.g. files "
+    "uploaded through the host UI)."
+)
+_PPTX_PATH_DESC = (
+    "Path to the PPTX file. Accepts an absolute filesystem path, a "
+    "kaos://artifacts/<id> URI returned by a previous tool, or a "
+    "relative path that resolves inside the session VFS (e.g. files "
+    "uploaded through the host UI)."
+)
+_XLSX_PATH_DESC = (
+    "Path to the XLSX file. Accepts an absolute filesystem path, a "
+    "kaos://artifacts/<id> URI returned by a previous tool, or a "
+    "relative path that resolves inside the session VFS (e.g. files "
+    "uploaded through the host UI)."
+)
 
-def _validate_docx_path(path_str: str) -> Path | None:
-    """Validate a DOCX file path exists and return it, or None."""
-    p = Path(path_str)
-    if not p.exists():
-        return None
-    return p
 
+def _origin_extras(resolved: ResolvedInput) -> dict[str, Any]:
+    """Return structured-content fields that thread provenance from an artifact input.
 
-def _validate_pptx_path(path_str: str) -> Path | None:
-    """Validate a PPTX file path exists and return it, or None."""
-    p = Path(path_str)
-    if not p.exists():
-        return None
-    return p
+    When the input originated in the artifact store, the SPA (or any
+    downstream tool that chains on the result) should see the *original*
+    artifact id / body URI rather than the random temp-file path the
+    resolver materialised. Parse-* tools call this and merge the
+    returned dict into their response so the ArtifactCard renders the
+    upload the user actually attached.
+
+    Returns an empty dict for VFS / filesystem inputs — those have no
+    artifact id of their own and the Parse-* tools register a fresh
+    derived artifact for them via ``store_document`` / ``store_tabular``.
+    """
+    if resolved.origin is not ResolvedOrigin.ARTIFACT:
+        return {}
+    extras: dict[str, Any] = {}
+    if resolved.artifact_id is not None:
+        extras["source_artifact_id"] = resolved.artifact_id
+    if resolved.body_uri is not None:
+        extras["source_body_uri"] = resolved.body_uri
+    return extras
 
 
 class ParseDocxTool(KaosTool):
@@ -74,7 +131,7 @@ class ParseDocxTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the DOCX file.",
+                    description=_DOCX_PATH_DESC,
                 ),
             ],
         )
@@ -83,60 +140,60 @@ class ParseDocxTool(KaosTool):
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
         path_str = inputs.get("path", "")
-        path = _validate_docx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. "
-                "Verify the path is correct. Use an absolute path if relative doesn't work."
-            )
-
         try:
-            from kaos_office.docx.reader import parse_docx
+            async with resolve_office_input(path_str, context, format="docx") as resolved:
+                try:
+                    from kaos_office.docx.reader import parse_docx
 
-            doc = parse_docx(path)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to parse DOCX: {exc}. "
-                "The file may be corrupted or password-protected. "
-                "Try kaos-office-metadata to check file validity first."
-            )
+                    doc = parse_docx(resolved.path)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to parse DOCX: {exc}. "
+                        "The file may be corrupted or password-protected. "
+                        "Try kaos-office-metadata to check file validity first."
+                    )
 
-        # Store as artifact if context available
-        if context and context.runtime:
-            from kaos_content.artifacts import (
-                document_outline,
-                document_to_summary,
-                store_document,
-            )
-            from kaos_content.views import DocumentView
+                # Store as artifact if context available
+                if context and context.runtime:
+                    from kaos_content.artifacts import (
+                        document_outline,
+                        document_to_summary,
+                        store_document,
+                    )
+                    from kaos_content.views import DocumentView
 
-            manifest = await store_document(doc, context.runtime, context, name=path.stem)
-            summary = document_to_summary(doc, max_length=500)
-            outline = document_outline(doc)
-            view = DocumentView(doc)
+                    name = resolved.path.stem or "document"
+                    manifest = await store_document(doc, context.runtime, context, name=name)
+                    summary = document_to_summary(doc, max_length=500)
+                    outline = document_outline(doc)
+                    view = DocumentView(doc)
 
-            return manifest.to_tool_result(
-                summary=summary,
-                structured_content={
-                    "artifact_id": manifest.artifact_id,
-                    "title": doc.metadata.title,
-                    "block_count": len(doc.body),
-                    "has_sections": view.has_sections,
-                    "outline": outline[:10],
-                    "section_count": len(view.flat_sections),
-                    "body_uri": manifest.body_uri,
-                    "sections_uri": f"kaos://content/{manifest.artifact_id}/sections",
-                },
-            )
+                    structured: dict[str, Any] = {
+                        "artifact_id": manifest.artifact_id,
+                        "title": doc.metadata.title,
+                        "block_count": len(doc.body),
+                        "has_sections": view.has_sections,
+                        "outline": outline[:10],
+                        "section_count": len(view.flat_sections),
+                        "body_uri": manifest.body_uri,
+                        "sections_uri": f"kaos://content/{manifest.artifact_id}/sections",
+                    }
+                    structured.update(_origin_extras(resolved))
+                    return manifest.to_tool_result(
+                        summary=summary,
+                        structured_content=structured,
+                    )
 
-        # No runtime — return inline summary
-        from kaos_content.serializers.text import serialize_text
+                # No runtime — return inline summary
+                from kaos_content.serializers.text import serialize_text
 
-        text = serialize_text(doc)
-        blocks = len(doc.body)
-        return ToolResult.create_success(
-            f"Parsed {blocks} blocks from {path.name}.\n\n{text[:2000]}"
-        )
+                text = serialize_text(doc)
+                blocks = len(doc.body)
+                return ToolResult.create_success(
+                    f"Parsed {blocks} blocks from {resolved.path.name}.\n\n{text[:2000]}"
+                )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class GetDocxTextTool(KaosTool):
@@ -160,7 +217,7 @@ class GetDocxTextTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the DOCX file.",
+                    description=_DOCX_PATH_DESC,
                 ),
             ],
         )
@@ -169,25 +226,23 @@ class GetDocxTextTool(KaosTool):
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
         path_str = inputs.get("path", "")
-        path = _validate_docx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. Verify the path is correct and the file exists."
-            )
-
         try:
-            from kaos_content.serializers.text import serialize_text
+            async with resolve_office_input(path_str, context, format="docx") as resolved:
+                try:
+                    from kaos_content.serializers.text import serialize_text
 
-            from kaos_office.docx.reader import parse_docx
+                    from kaos_office.docx.reader import parse_docx
 
-            doc = parse_docx(path)
-            text = serialize_text(doc)
-            return ToolResult.create_success(text)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to extract text: {exc}. "
-                "Try kaos-office-parse-docx for more detailed error info."
-            )
+                    doc = parse_docx(resolved.path)
+                    text = serialize_text(doc)
+                    return ToolResult.create_success(text)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to extract text: {exc}. "
+                        "Try kaos-office-parse-docx for more detailed error info."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class GetDocxMarkdownTool(KaosTool):
@@ -211,7 +266,7 @@ class GetDocxMarkdownTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the DOCX file.",
+                    description=_DOCX_PATH_DESC,
                 ),
             ],
         )
@@ -220,25 +275,23 @@ class GetDocxMarkdownTool(KaosTool):
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
         path_str = inputs.get("path", "")
-        path = _validate_docx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. Verify the path is correct and the file exists."
-            )
-
         try:
-            from kaos_content.serializers.markdown import serialize_markdown
+            async with resolve_office_input(path_str, context, format="docx") as resolved:
+                try:
+                    from kaos_content.serializers.markdown import serialize_markdown
 
-            from kaos_office.docx.reader import parse_docx
+                    from kaos_office.docx.reader import parse_docx
 
-            doc = parse_docx(path)
-            md = serialize_markdown(doc)
-            return ToolResult.create_success(md)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to extract markdown: {exc}. "
-                "Try kaos-office-get-text for plain text extraction."
-            )
+                    doc = parse_docx(resolved.path)
+                    md = serialize_markdown(doc)
+                    return ToolResult.create_success(md)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to extract markdown: {exc}. "
+                        "Try kaos-office-get-text for plain text extraction."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class DocxMetadataTool(KaosTool):
@@ -262,7 +315,7 @@ class DocxMetadataTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the DOCX file.",
+                    description=_DOCX_PATH_DESC,
                 ),
             ],
         )
@@ -271,36 +324,37 @@ class DocxMetadataTool(KaosTool):
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
         path_str = inputs.get("path", "")
-        path = _validate_docx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. Verify the path is correct and the file exists."
-            )
-
         try:
-            from kaos_office.docx.metadata import DocxMetadata
-            from kaos_office.opc.package import OPCPackage
+            async with resolve_office_input(path_str, context, format="docx") as resolved:
+                try:
+                    from kaos_office.docx.metadata import DocxMetadata
+                    from kaos_office.opc.package import OPCPackage
 
-            with OPCPackage.open(path) as pkg:
-                core_xml = (
-                    pkg.read_part("docProps/core.xml")
-                    if pkg.has_part("docProps/core.xml")
-                    else None
-                )
-                app_xml = (
-                    pkg.read_part("docProps/app.xml") if pkg.has_part("docProps/app.xml") else None
-                )
-                meta = DocxMetadata.from_xml(core_xml, app_xml)
+                    with OPCPackage.open(resolved.path) as pkg:
+                        core_xml = (
+                            pkg.read_part("docProps/core.xml")
+                            if pkg.has_part("docProps/core.xml")
+                            else None
+                        )
+                        app_xml = (
+                            pkg.read_part("docProps/app.xml")
+                            if pkg.has_part("docProps/app.xml")
+                            else None
+                        )
+                        meta = DocxMetadata.from_xml(core_xml, app_xml)
 
-            meta_dict = meta.to_dict()
-            title = meta_dict.get("title", Path(path).name)
-            summary = f"Metadata for {title}"
-            return ToolResult.create_success(output=meta_dict, summary=summary)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to extract metadata: {exc}. "
-                "The file may not be a valid DOCX. Check that it opens in Word or LibreOffice."
-            )
+                    meta_dict = meta.to_dict()
+                    title = meta_dict.get("title", resolved.path.name)
+                    summary = f"Metadata for {title}"
+                    return ToolResult.create_success(output=meta_dict, summary=summary)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to extract metadata: {exc}. "
+                        "The file may not be a valid DOCX. Check that it opens in Word "
+                        "or LibreOffice."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class SearchDocxTool(KaosTool):
@@ -324,7 +378,7 @@ class SearchDocxTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the DOCX file.",
+                    description=_DOCX_PATH_DESC,
                 ),
                 ParameterSchema(
                     name="query",
@@ -363,42 +417,40 @@ class SearchDocxTool(KaosTool):
                 "Example: kaos-office-search path='doc.docx' query='force majeure'"
             )
 
-        path = _validate_docx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. Verify the path is correct and the file exists."
-            )
-
         try:
-            from kaos_content.search import search_document
+            async with resolve_office_input(path_str, context, format="docx") as resolved:
+                try:
+                    from kaos_content.search import search_document
 
-            from kaos_office.docx.reader import parse_docx
+                    from kaos_office.docx.reader import parse_docx
 
-            doc = parse_docx(path)
-            results = search_document(doc, query, top_k=top_k, level=level)
+                    doc = parse_docx(resolved.path)
+                    results = search_document(doc, query, top_k=top_k, level=level)
 
-            result_data = {
-                "query": results.query,
-                "total_matches": results.total_matches,
-                "has_more": results.has_more,
-                "results": [
-                    {
-                        "text": r.text,
-                        "score": round(r.score, 4),
-                        "block_ref": r.block_ref,
-                        "section_title": r.section_title,
+                    result_data = {
+                        "query": results.query,
+                        "total_matches": results.total_matches,
+                        "has_more": results.has_more,
+                        "results": [
+                            {
+                                "text": r.text,
+                                "score": round(r.score, 4),
+                                "block_ref": r.block_ref,
+                                "section_title": r.section_title,
+                            }
+                            for r in results.results
+                        ],
                     }
-                    for r in results.results
-                ],
-            }
-            more = " (has more)" if results.has_more else ""
-            summary = f"Found {results.total_matches} matches for '{results.query}'{more}"
-            return ToolResult.create_success(output=result_data, summary=summary)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Search failed: {exc}. "
-                "Try kaos-office-get-text to verify the document has extractable content."
-            )
+                    more = " (has more)" if results.has_more else ""
+                    summary = f"Found {results.total_matches} matches for '{results.query}'{more}"
+                    return ToolResult.create_success(output=result_data, summary=summary)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Search failed: {exc}. "
+                        "Try kaos-office-get-text to verify the document has extractable content."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class ParsePptxTool(KaosTool):
@@ -423,7 +475,7 @@ class ParsePptxTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the PPTX file.",
+                    description=_PPTX_PATH_DESC,
                 ),
             ],
         )
@@ -432,61 +484,61 @@ class ParsePptxTool(KaosTool):
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
         path_str = inputs.get("path", "")
-        path = _validate_pptx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. "
-                "Verify the path is correct. Use an absolute path if relative doesn't work."
-            )
-
         try:
-            from kaos_office.pptx.reader import parse_pptx
+            async with resolve_office_input(path_str, context, format="pptx") as resolved:
+                try:
+                    from kaos_office.pptx.reader import parse_pptx
 
-            doc = parse_pptx(path)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to parse PPTX: {exc}. "
-                "The file may be corrupted or password-protected. "
-                "Try kaos-office-list-slides for basic file validation."
-            )
+                    doc = parse_pptx(resolved.path)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to parse PPTX: {exc}. "
+                        "The file may be corrupted or password-protected. "
+                        "Try kaos-office-list-slides for basic file validation."
+                    )
 
-        # Store as artifact if context available
-        if context and context.runtime:
-            from kaos_content.artifacts import (
-                document_outline,
-                document_to_summary,
-                store_document,
-            )
-            from kaos_content.views import DocumentView
+                # Store as artifact if context available
+                if context and context.runtime:
+                    from kaos_content.artifacts import (
+                        document_outline,
+                        document_to_summary,
+                        store_document,
+                    )
+                    from kaos_content.views import DocumentView
 
-            manifest = await store_document(doc, context.runtime, context, name=path.stem)
-            summary = document_to_summary(doc, max_length=500)
-            outline = document_outline(doc)
-            view = DocumentView(doc)
+                    name = resolved.path.stem or "presentation"
+                    manifest = await store_document(doc, context.runtime, context, name=name)
+                    summary = document_to_summary(doc, max_length=500)
+                    outline = document_outline(doc)
+                    view = DocumentView(doc)
 
-            return manifest.to_tool_result(
-                summary=summary,
-                structured_content={
-                    "artifact_id": manifest.artifact_id,
-                    "title": doc.metadata.title,
-                    "slide_count": len(doc.body),
-                    "block_count": len(doc.body),
-                    "has_sections": view.has_sections,
-                    "outline": outline[:10],
-                    "section_count": len(view.flat_sections),
-                    "body_uri": manifest.body_uri,
-                    "sections_uri": f"kaos://content/{manifest.artifact_id}/sections",
-                },
-            )
+                    structured: dict[str, Any] = {
+                        "artifact_id": manifest.artifact_id,
+                        "title": doc.metadata.title,
+                        "slide_count": len(doc.body),
+                        "block_count": len(doc.body),
+                        "has_sections": view.has_sections,
+                        "outline": outline[:10],
+                        "section_count": len(view.flat_sections),
+                        "body_uri": manifest.body_uri,
+                        "sections_uri": f"kaos://content/{manifest.artifact_id}/sections",
+                    }
+                    structured.update(_origin_extras(resolved))
+                    return manifest.to_tool_result(
+                        summary=summary,
+                        structured_content=structured,
+                    )
 
-        # No runtime — return inline summary
-        from kaos_content.serializers.text import serialize_text
+                # No runtime — return inline summary
+                from kaos_content.serializers.text import serialize_text
 
-        text = serialize_text(doc)
-        blocks = len(doc.body)
-        return ToolResult.create_success(
-            f"Parsed {blocks} slides from {path.name}.\n\n{text[:2000]}"
-        )
+                text = serialize_text(doc)
+                blocks = len(doc.body)
+                return ToolResult.create_success(
+                    f"Parsed {blocks} slides from {resolved.path.name}.\n\n{text[:2000]}"
+                )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class ListSlidesTool(KaosTool):
@@ -510,7 +562,7 @@ class ListSlidesTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the PPTX file.",
+                    description=_PPTX_PATH_DESC,
                 ),
             ],
         )
@@ -519,24 +571,22 @@ class ListSlidesTool(KaosTool):
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
         path_str = inputs.get("path", "")
-        path = _validate_pptx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. Verify the path is correct and the file exists."
-            )
-
         try:
-            from kaos_office.pptx.reader import list_slides
+            async with resolve_office_input(path_str, context, format="pptx") as resolved:
+                try:
+                    from kaos_office.pptx.reader import list_slides
 
-            slides = list_slides(path)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to list slides: {exc}. "
-                "The file may be corrupted. Try opening it in PowerPoint or LibreOffice."
-            )
+                    slides = list_slides(resolved.path)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to list slides: {exc}. "
+                        "The file may be corrupted. Try opening it in PowerPoint or LibreOffice."
+                    )
 
-        summary = f"Found {len(slides)} slides"
-        return ToolResult.create_success(output={"slides": slides}, summary=summary)
+                summary = f"Found {len(slides)} slides"
+                return ToolResult.create_success(output={"slides": slides}, summary=summary)
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class GetSlideTool(KaosTool):
@@ -561,7 +611,7 @@ class GetSlideTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the PPTX file.",
+                    description=_PPTX_PATH_DESC,
                 ),
                 ParameterSchema(
                     name="slide_number",
@@ -578,26 +628,24 @@ class GetSlideTool(KaosTool):
         path_str = inputs.get("path", "")
         slide_number = inputs.get("slide_number", 1)
 
-        path = _validate_pptx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. Verify the path is correct and the file exists."
-            )
-
         try:
-            from kaos_office.pptx.reader import get_slide_text
+            async with resolve_office_input(path_str, context, format="pptx") as resolved:
+                try:
+                    from kaos_office.pptx.reader import get_slide_text
 
-            text = get_slide_text(path, slide_number)
-            return ToolResult.create_success(text)
-        except ValueError as exc:
-            return ToolResult.create_error(
-                f"{exc}. Use kaos-office-list-slides to see available slide numbers."
-            )
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to extract slide: {exc}. "
-                "Try kaos-office-parse-pptx for full document extraction."
-            )
+                    text = get_slide_text(resolved.path, slide_number)
+                    return ToolResult.create_success(text)
+                except ValueError as exc:
+                    return ToolResult.create_error(
+                        f"{exc}. Use kaos-office-list-slides to see available slide numbers."
+                    )
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to extract slide: {exc}. "
+                        "Try kaos-office-parse-pptx for full document extraction."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class SearchPptxTool(KaosTool):
@@ -622,7 +670,7 @@ class SearchPptxTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the PPTX file.",
+                    description=_PPTX_PATH_DESC,
                 ),
                 ParameterSchema(
                     name="query",
@@ -652,42 +700,41 @@ class SearchPptxTool(KaosTool):
                 "Example: kaos-office-search-pptx path='slides.pptx' query='revenue growth'"
             )
 
-        path = _validate_pptx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. Verify the path is correct and the file exists."
-            )
-
         try:
-            from kaos_content.search import search_document
+            async with resolve_office_input(path_str, context, format="pptx") as resolved:
+                try:
+                    from kaos_content.search import search_document
 
-            from kaos_office.pptx.reader import parse_pptx
+                    from kaos_office.pptx.reader import parse_pptx
 
-            doc = parse_pptx(path)
-            results = search_document(doc, query, top_k=top_k)
+                    doc = parse_pptx(resolved.path)
+                    results = search_document(doc, query, top_k=top_k)
 
-            result_data = {
-                "query": results.query,
-                "total_matches": results.total_matches,
-                "has_more": results.has_more,
-                "results": [
-                    {
-                        "text": r.text,
-                        "score": round(r.score, 4),
-                        "block_ref": r.block_ref,
-                        "section_title": r.section_title,
+                    result_data = {
+                        "query": results.query,
+                        "total_matches": results.total_matches,
+                        "has_more": results.has_more,
+                        "results": [
+                            {
+                                "text": r.text,
+                                "score": round(r.score, 4),
+                                "block_ref": r.block_ref,
+                                "section_title": r.section_title,
+                            }
+                            for r in results.results
+                        ],
                     }
-                    for r in results.results
-                ],
-            }
-            more = " (has more)" if results.has_more else ""
-            summary = f"Found {results.total_matches} matches for '{results.query}'{more}"
-            return ToolResult.create_success(output=result_data, summary=summary)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Search failed: {exc}. "
-                "Try kaos-office-parse-pptx to verify the presentation has extractable content."
-            )
+                    more = " (has more)" if results.has_more else ""
+                    summary = f"Found {results.total_matches} matches for '{results.query}'{more}"
+                    return ToolResult.create_success(output=result_data, summary=summary)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Search failed: {exc}. "
+                        "Try kaos-office-parse-pptx to verify the presentation has "
+                        "extractable content."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class GetSlideNotesTool(KaosTool):
@@ -712,7 +759,7 @@ class GetSlideNotesTool(KaosTool):
                 ParameterSchema(
                     name="path",
                     type="string",
-                    description="Path to the PPTX file.",
+                    description=_PPTX_PATH_DESC,
                 ),
                 ParameterSchema(
                     name="slide",
@@ -729,45 +776,34 @@ class GetSlideNotesTool(KaosTool):
         path_str = inputs.get("path", "")
         slide_number = inputs.get("slide", 1)
 
-        path = _validate_pptx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(
-                f"File not found: {path_str}. Verify the path is correct and the file exists."
-            )
-
         try:
-            from kaos_office.pptx.reader import get_slide_notes
+            async with resolve_office_input(path_str, context, format="pptx") as resolved:
+                try:
+                    from kaos_office.pptx.reader import get_slide_notes
 
-            notes = get_slide_notes(path, slide_number)
-            if notes is None:
-                return ToolResult.create_success(
-                    f"Slide {slide_number} has no speaker notes. "
-                    "Use kaos-office-list-slides to see which slides have notes."
-                )
-            return ToolResult.create_success(notes)
-        except ValueError as exc:
-            return ToolResult.create_error(
-                f"{exc}. Use kaos-office-list-slides to see available slide numbers."
-            )
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to extract slide notes: {exc}. "
-                "Try kaos-office-parse-pptx for full document extraction."
-            )
-
-
-def _validate_xlsx_path(path_str: str) -> Path | None:
-    """Validate an XLSX file path exists and return it, or None."""
-    p = Path(path_str)
-    if not p.exists():
-        return None
-    return p
+                    notes = get_slide_notes(resolved.path, slide_number)
+                    if notes is None:
+                        return ToolResult.create_success(
+                            f"Slide {slide_number} has no speaker notes. "
+                            "Use kaos-office-list-slides to see which slides have notes."
+                        )
+                    return ToolResult.create_success(notes)
+                except ValueError as exc:
+                    return ToolResult.create_error(
+                        f"{exc}. Use kaos-office-list-slides to see available slide numbers."
+                    )
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to extract slide notes: {exc}. "
+                        "Try kaos-office-parse-pptx for full document extraction."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
-# Shared XLSX-tool error copy. Every XLSX tool emits the same install
-# hint on ImportError and the same "file not found" body, so the
-# strings live here in one place to keep the three-part what/how/
-# alternative shape consistent across tools.
+# Shared XLSX-tool error copy. The native lxml reader needs no extras;
+# the install hint stays so the message is consistent across the four
+# XLSX tools when an optional engine (calamine / openpyxl) is missing.
 _XLSX_IMPORT_ERROR = (
     "XLSX optional dependency missing. The default native reader needs no extras; "
     "install `kaos-office[xlsx-calamine]` for the Rust fast-path, "
@@ -776,16 +812,6 @@ _XLSX_IMPORT_ERROR = (
     'Alternative: drop `engine="calamine"` and `include_formulas=True` to '
     "fall back to the native lxml reader, which has no extra deps."
 )
-
-
-def _xlsx_file_not_found(path_str: str) -> str:
-    return (
-        f"XLSX file not found: {path_str}. "
-        "Pass an absolute path, or a path relative to the current working directory. "
-        "If the workbook lives behind a URL or in a VFS, fetch it first (e.g. via "
-        "kaos-source-http-fetch or kaos-core-vfs-read) and pass the resulting "
-        "filesystem path."
-    )
 
 
 class ParseXlsxTool(KaosTool):
@@ -806,7 +832,7 @@ class ParseXlsxTool(KaosTool):
             version=_VERSION,
             annotations=_OFFICE_ANNOTATIONS,
             input_schema=[
-                ParameterSchema(name="path", type="string", description="Path to the XLSX file."),
+                ParameterSchema(name="path", type="string", description=_XLSX_PATH_DESC),
                 ParameterSchema(
                     name="sheets",
                     type="array",
@@ -828,42 +854,49 @@ class ParseXlsxTool(KaosTool):
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
         path_str = inputs["path"]
-        path = _validate_xlsx_path(path_str)
-        if path is None:
-            return ToolResult.create_error(_xlsx_file_not_found(path_str))
-
         try:
-            from kaos_content.serializers.tabular import serialize_tabular_summary
+            async with resolve_office_input(path_str, context, format="xlsx") as resolved:
+                try:
+                    from kaos_content.serializers.tabular import serialize_tabular_summary
 
-            from kaos_office.xlsx.reader import parse_xlsx
+                    from kaos_office.xlsx.reader import parse_xlsx
 
-            doc = parse_xlsx(
-                path, sheets=inputs.get("sheets"), header_row=inputs.get("header_row", 0)
-            )
-            summary = serialize_tabular_summary(doc)
+                    doc = parse_xlsx(
+                        resolved.path,
+                        sheets=inputs.get("sheets"),
+                        header_row=inputs.get("header_row", 0),
+                    )
+                    summary = serialize_tabular_summary(doc)
 
-            if context is not None and context.runtime is not None:
-                from kaos_content.artifacts import store_tabular
+                    if context is not None and context.runtime is not None:
+                        from kaos_content.artifacts import store_tabular
 
-                manifest = await store_tabular(doc, context.runtime, context, name=path.stem)
-                return manifest.to_tool_result(
-                    summary=summary,
-                    structured_content={
-                        "artifact_id": manifest.artifact_id,
-                        "table_count": len(doc.tables),
-                        "tables": [{"name": t.name, "row_count": t.row_count} for t in doc.tables],
-                    },
-                )
-            return ToolResult.create_text(summary)
-        except ImportError:
-            return ToolResult.create_error(_XLSX_IMPORT_ERROR)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"XLSX extraction failed for {path}: {exc}. "
-                "The file may be password-protected, corrupted, or use an unsupported "
-                "feature. Try kaos-office-xlsx-metadata to inspect the workbook, or "
-                "kaos-office-list-sheets-xlsx to verify it opens at all."
-            )
+                        name = resolved.path.stem or "workbook"
+                        manifest = await store_tabular(doc, context.runtime, context, name=name)
+                        structured: dict[str, Any] = {
+                            "artifact_id": manifest.artifact_id,
+                            "table_count": len(doc.tables),
+                            "tables": [
+                                {"name": t.name, "row_count": t.row_count} for t in doc.tables
+                            ],
+                        }
+                        structured.update(_origin_extras(resolved))
+                        return manifest.to_tool_result(
+                            summary=summary,
+                            structured_content=structured,
+                        )
+                    return ToolResult.create_text(summary)
+                except ImportError:
+                    return ToolResult.create_error(_XLSX_IMPORT_ERROR)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"XLSX extraction failed for {resolved.path}: {exc}. "
+                        "The file may be password-protected, corrupted, or use an unsupported "
+                        "feature. Try kaos-office-xlsx-metadata to inspect the workbook, or "
+                        "kaos-office-list-sheets-xlsx to verify it opens at all."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class ListSheetsXlsxTool(KaosTool):
@@ -881,29 +914,31 @@ class ListSheetsXlsxTool(KaosTool):
             version=_VERSION,
             annotations=_OFFICE_ANNOTATIONS,
             input_schema=[
-                ParameterSchema(name="path", type="string", description="Path to the XLSX file."),
+                ParameterSchema(name="path", type="string", description=_XLSX_PATH_DESC),
             ],
         )
 
     async def execute(
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
-        path = _validate_xlsx_path(inputs["path"])
-        if path is None:
-            return ToolResult.create_error(_xlsx_file_not_found(inputs["path"]))
         try:
-            from kaos_office.xlsx.reader import list_sheets
+            async with resolve_office_input(inputs["path"], context, format="xlsx") as resolved:
+                try:
+                    from kaos_office.xlsx.reader import list_sheets
 
-            return ToolResult.create_success(output={"sheets": list_sheets(path)})
-        except ImportError:
-            return ToolResult.create_error(_XLSX_IMPORT_ERROR)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to list sheets in {path}: {exc}. "
-                "Verify the file is a valid XLSX (not XLS, CSV, or a renamed file). "
-                "Try kaos-office-xlsx-metadata if you only need workbook properties, "
-                "or open the file directly to confirm it isn't corrupted or password-protected."
-            )
+                    return ToolResult.create_success(output={"sheets": list_sheets(resolved.path)})
+                except ImportError:
+                    return ToolResult.create_error(_XLSX_IMPORT_ERROR)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to list sheets in {resolved.path}: {exc}. "
+                        "Verify the file is a valid XLSX (not XLS, CSV, or a renamed file). "
+                        "Try kaos-office-xlsx-metadata if you only need workbook properties, "
+                        "or open the file directly to confirm it isn't corrupted or "
+                        "password-protected."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class GetSheetXlsxTool(KaosTool):
@@ -923,7 +958,7 @@ class GetSheetXlsxTool(KaosTool):
             version=_VERSION,
             annotations=_OFFICE_ANNOTATIONS,
             input_schema=[
-                ParameterSchema(name="path", type="string", description="Path to the XLSX file."),
+                ParameterSchema(name="path", type="string", description=_XLSX_PATH_DESC),
                 ParameterSchema(name="sheet", type="string", description="Sheet name."),
                 ParameterSchema(
                     name="max_rows",
@@ -938,31 +973,38 @@ class GetSheetXlsxTool(KaosTool):
     async def execute(
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
-        path = _validate_xlsx_path(inputs["path"])
-        if path is None:
-            return ToolResult.create_error(_xlsx_file_not_found(inputs["path"]))
         try:
-            from kaos_content.serializers.tabular import serialize_tsv
+            async with resolve_office_input(inputs["path"], context, format="xlsx") as resolved:
+                try:
+                    from kaos_content.serializers.tabular import serialize_tsv
 
-            from kaos_office.xlsx.reader import parse_xlsx
+                    from kaos_office.xlsx.reader import parse_xlsx
 
-            doc = parse_xlsx(path, sheets=[inputs["sheet"]], max_rows=inputs.get("max_rows", 100))
-            if not doc.tables:
-                return ToolResult.create_error(
-                    f"Sheet '{inputs['sheet']}' not found in {path}. "
-                    "Sheet names are case-sensitive and may include trailing whitespace. "
-                    "Call kaos-office-list-sheets-xlsx first to see the exact names available."
-                )
-            return ToolResult.create_text(serialize_tsv(doc.tables[0]))
-        except ImportError:
-            return ToolResult.create_error(_XLSX_IMPORT_ERROR)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to extract sheet '{inputs['sheet']}' from {path}: {exc}. "
-                "If the sheet uses array formulas or external links, the native reader "
-                'may not support them — retry with kaos-office-parse-xlsx (engine="calamine") '
-                "or use kaos-office-list-sheets-xlsx to confirm the sheet exists."
-            )
+                    doc = parse_xlsx(
+                        resolved.path,
+                        sheets=[inputs["sheet"]],
+                        max_rows=inputs.get("max_rows", 100),
+                    )
+                    if not doc.tables:
+                        return ToolResult.create_error(
+                            f"Sheet '{inputs['sheet']}' not found in {resolved.path}. "
+                            "Sheet names are case-sensitive and may include trailing whitespace. "
+                            "Call kaos-office-list-sheets-xlsx first to see the exact names "
+                            "available."
+                        )
+                    return ToolResult.create_text(serialize_tsv(doc.tables[0]))
+                except ImportError:
+                    return ToolResult.create_error(_XLSX_IMPORT_ERROR)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to extract sheet '{inputs['sheet']}' from {resolved.path}: {exc}. "
+                        "If the sheet uses array formulas or external links, the native reader "
+                        "may not support them — retry with kaos-office-parse-xlsx "
+                        '(engine="calamine") or use kaos-office-list-sheets-xlsx to confirm '
+                        "the sheet exists."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 class XlsxMetadataTool(KaosTool):
@@ -980,32 +1022,33 @@ class XlsxMetadataTool(KaosTool):
             version=_VERSION,
             annotations=_OFFICE_ANNOTATIONS,
             input_schema=[
-                ParameterSchema(name="path", type="string", description="Path to the XLSX file."),
+                ParameterSchema(name="path", type="string", description=_XLSX_PATH_DESC),
             ],
         )
 
     async def execute(
         self, inputs: dict[str, Any], context: KaosContext | None = None
     ) -> ToolResult:
-        path = _validate_xlsx_path(inputs["path"])
-        if path is None:
-            return ToolResult.create_error(_xlsx_file_not_found(inputs["path"]))
         try:
-            from kaos_content.artifacts import tabular_summary
+            async with resolve_office_input(inputs["path"], context, format="xlsx") as resolved:
+                try:
+                    from kaos_content.artifacts import tabular_summary
 
-            from kaos_office.xlsx.reader import parse_xlsx
+                    from kaos_office.xlsx.reader import parse_xlsx
 
-            doc = parse_xlsx(path)
-            return ToolResult.create_success(output=tabular_summary(doc))
-        except ImportError:
-            return ToolResult.create_error(_XLSX_IMPORT_ERROR)
-        except Exception as exc:
-            return ToolResult.create_error(
-                f"Failed to read XLSX metadata for {path}: {exc}. "
-                "Confirm the file is a valid .xlsx workbook (not .xls / .xlsm with macros). "
-                "Try kaos-office-list-sheets-xlsx for a lighter probe that returns just the "
-                "sheet inventory without parsing every cell."
-            )
+                    doc = parse_xlsx(resolved.path)
+                    return ToolResult.create_success(output=tabular_summary(doc))
+                except ImportError:
+                    return ToolResult.create_error(_XLSX_IMPORT_ERROR)
+                except Exception as exc:
+                    return ToolResult.create_error(
+                        f"Failed to read XLSX metadata for {resolved.path}: {exc}. "
+                        "Confirm the file is a valid .xlsx workbook (not .xls / .xlsm with "
+                        "macros). Try kaos-office-list-sheets-xlsx for a lighter probe that "
+                        "returns just the sheet inventory without parsing every cell."
+                    )
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
 
 
 # ---------------------------------------------------------------------------
@@ -1249,7 +1292,11 @@ class WritePptxTool(KaosTool):
             ParameterSchema(
                 name="template_path",
                 type="string",
-                description="Optional path to a .pptx file to use as a template.",
+                description=(
+                    "Optional path to a .pptx file to use as a template. "
+                    "Accepts an absolute filesystem path, a kaos://artifacts/<id> "
+                    "URI, or a session-VFS path."
+                ),
                 required=False,
             )
         )
@@ -1280,12 +1327,47 @@ class WritePptxTool(KaosTool):
             return ToolResult.create_error(err or "Missing output_path.")
 
         template_path = inputs.get("template_path") or None
-        if template_path is not None and not Path(template_path).exists():
-            return ToolResult.create_error(
-                f"Template not found: {template_path}. "
-                "Omit `template_path` to use the default blank deck."
-            )
 
+        # Resolve the optional template through the same VFS-aware helper so
+        # SPA-uploaded .pptx templates work the same as filesystem paths. The
+        # writer call happens inside the `async with` so the resolver's temp
+        # file stays alive for the duration of `write_pptx`.
+        if template_path is not None:
+            try:
+                async with resolve_office_input(
+                    template_path, context, format="pptx"
+                ) as resolved_template:
+                    return await self._write(
+                        doc=doc,
+                        out=out,
+                        template_path=resolved_template.path,
+                        template_input=template_path,
+                        context=context,
+                    )
+            except InputPathResolutionError as exc:
+                return ToolResult.create_error(
+                    f"Template not found: {template_path}. "
+                    "Omit `template_path` to use the default blank deck. "
+                    f"(resolver: {exc.to_agent_message()})"
+                )
+
+        return await self._write(
+            doc=doc,
+            out=out,
+            template_path=None,
+            template_input=None,
+            context=context,
+        )
+
+    async def _write(
+        self,
+        *,
+        doc: Any,
+        out: Path,
+        template_path: Path | None,
+        template_input: str | None,
+        context: KaosContext | None,
+    ) -> ToolResult:
         try:
             from kaos_office.pptx.writer import write_pptx
 
@@ -1302,7 +1384,7 @@ class WritePptxTool(KaosTool):
 
         extra: dict[str, Any] = {
             "block_count": len(doc.body),
-            "template_path": template_path,
+            "template_path": template_input,
         }
         artifact_meta = await _register_output_as_artifact(out, "pptx", context)
         if artifact_meta is not None:
