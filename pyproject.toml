@@ -190,16 +190,18 @@ exclude = [
 package = true
 exclude-newer = "72 hours"
 
-# Temporary local source override: kaos-core 0.1.0a9 (which introduces
+# Temporary git source override: kaos-core 0.1.0a9 (which introduces
 # kaos_core.path_resolver.resolve_input_path — see Stage 1 of the
 # vfs-blind-tools-audit-and-fix plan) is not yet on PyPI as of this PR.
-# Remove this stanza in the release prep step once kaos-core 0.1.0a9 has
-# been published; the [project] dependency floor (>=0.1.0a9) is what
-# users of the published wheel will resolve against. tool.uv.sources is
-# never written into the built wheel, so this override does not affect
-# downstream consumers — it only steers local + CI uv lock / sync.
+# Pinned to the release-prep commit on kaos-core's main branch so CI
+# can resolve without checking out a sibling. Remove this stanza in
+# the release prep step once kaos-core 0.1.0a9 has been published; the
+# [project] dependency floor (>=0.1.0a9) is what users of the published
+# wheel will resolve against. tool.uv.sources is never written into the
+# built wheel, so this override does not affect downstream consumers —
+# it only steers local + CI uv lock / sync.
 [tool.uv.sources]
-kaos-core = { path = "../kaos-core", editable = true }
+kaos-core = { git = "https://github.com/273v/kaos-core.git", rev = "4e576083cfd464b93ab20da5d3aca4187a97b59a" }
 
 [tool.uv.exclude-newer-package]
 "kaos-citations" = false
