@@ -216,5 +216,5 @@ class TestPStyleLinkedNumbering:
         path = _write_docx(tmp_path, _PSTYLE_DOCUMENT, _PSTYLE_NUMBERING, _STYLES_WITH_HEADING1)
         doc = parse_docx(path)
         headings = [b for b in doc.body if isinstance(b, Heading)]
-        assert headings[0].numbering_label == "Article 1."  # ty: ignore[unresolved-attribute]
-        assert headings[1].numbering_label == "Article 2."  # ty: ignore[unresolved-attribute]
+        assert headings[0].numbering_label == "Article 1."
+        assert headings[1].numbering_label == "Article 2."
