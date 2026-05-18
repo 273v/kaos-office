@@ -148,7 +148,7 @@ async def test_list_sheets_returns_correct_names(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-list-sheets-xlsx",
-            {"path": str(xlsx_path)},
+            {"path": xlsx_path.as_uri()},
         )
         assert not result.isError
         assert result.structuredContent is not None
@@ -178,7 +178,7 @@ async def test_list_sheets_dimensions(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-list-sheets-xlsx",
-            {"path": str(xlsx_path)},
+            {"path": xlsx_path.as_uri()},
         )
         assert not result.isError
         sheets = _structured(result)["sheets"]
@@ -212,7 +212,7 @@ async def test_get_sheet_returns_correct_data(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-get-sheet-xlsx",
-            {"path": str(xlsx_path), "sheet": "Revenue"},
+            {"path": xlsx_path.as_uri(), "sheet": "Revenue"},
         )
         assert not result.isError
         text = _get_text(result)
@@ -242,7 +242,7 @@ async def test_get_sheet_specific_sheet(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-get-sheet-xlsx",
-            {"path": str(xlsx_path), "sheet": "Expenses"},
+            {"path": xlsx_path.as_uri(), "sheet": "Expenses"},
         )
         assert not result.isError
         text = _get_text(result)
@@ -266,7 +266,7 @@ async def test_get_sheet_max_rows(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-get-sheet-xlsx",
-            {"path": str(xlsx_path), "sheet": "Revenue", "max_rows": 1},
+            {"path": xlsx_path.as_uri(), "sheet": "Revenue", "max_rows": 1},
         )
         assert not result.isError
         text = _get_text(result)
@@ -286,7 +286,7 @@ async def test_get_sheet_nonexistent_sheet(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-get-sheet-xlsx",
-            {"path": str(xlsx_path), "sheet": "DoesNotExist"},
+            {"path": xlsx_path.as_uri(), "sheet": "DoesNotExist"},
         )
         assert result.isError
         error_text = _get_text(result)
@@ -309,7 +309,7 @@ async def test_parse_xlsx_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-parse-xlsx",
-            {"path": str(xlsx_path)},
+            {"path": xlsx_path.as_uri()},
         )
         assert not result.isError
         text = _get_text(result)
@@ -333,7 +333,7 @@ async def test_parse_xlsx_with_artifact(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-parse-xlsx",
-            {"path": str(xlsx_path)},
+            {"path": xlsx_path.as_uri()},
         )
         assert not result.isError
 
@@ -361,7 +361,7 @@ async def test_parse_xlsx_specific_sheets(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-parse-xlsx",
-            {"path": str(xlsx_path), "sheets": ["Revenue", "Summary"]},
+            {"path": xlsx_path.as_uri(), "sheets": ["Revenue", "Summary"]},
         )
         assert not result.isError
         text = _get_text(result)
@@ -385,7 +385,7 @@ async def test_xlsx_metadata_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-xlsx-metadata",
-            {"path": str(xlsx_path)},
+            {"path": xlsx_path.as_uri()},
         )
         assert not result.isError
         assert result.structuredContent is not None
@@ -416,7 +416,7 @@ async def test_xlsx_file_not_found_error(tmp_path: Path) -> None:
     runtime = _make_runtime(tmp_path)
     register_office_tools(runtime)
     app = create_app(runtime)
-    fake_path = "/nonexistent/path/data.xlsx"
+    fake_path = "file:///nonexistent/path/data.xlsx"
 
     async with create_connected_server_and_client_session(app) as session:
         for tool_name, args in [
@@ -450,7 +450,7 @@ async def test_xlsx_full_pipeline(tmp_path: Path) -> None:
         # Step 1: List sheets (agent would do this first)
         list_result = await session.call_tool(
             "kaos-office-list-sheets-xlsx",
-            {"path": str(xlsx_path)},
+            {"path": xlsx_path.as_uri()},
         )
         assert not list_result.isError
         sheets = _structured(list_result)["sheets"]
@@ -461,7 +461,7 @@ async def test_xlsx_full_pipeline(tmp_path: Path) -> None:
         for sheet_name in sheet_names:
             get_result = await session.call_tool(
                 "kaos-office-get-sheet-xlsx",
-                {"path": str(xlsx_path), "sheet": sheet_name},
+                {"path": xlsx_path.as_uri(), "sheet": sheet_name},
             )
             assert not get_result.isError, f"Failed to get sheet: {sheet_name}"
             text = _get_text(get_result)
@@ -472,14 +472,14 @@ async def test_xlsx_full_pipeline(tmp_path: Path) -> None:
         # Step 3: Parse full workbook
         parse_result = await session.call_tool(
             "kaos-office-parse-xlsx",
-            {"path": str(xlsx_path)},
+            {"path": xlsx_path.as_uri()},
         )
         assert not parse_result.isError
 
         # Step 4: Get metadata
         meta_result = await session.call_tool(
             "kaos-office-xlsx-metadata",
-            {"path": str(xlsx_path)},
+            {"path": xlsx_path.as_uri()},
         )
         assert not meta_result.isError
         meta = _structured(meta_result)

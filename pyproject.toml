@@ -42,7 +42,7 @@ classifiers = [
 ]
 dependencies = [
   "kaos-content[markdown]>=0.1.0a1,<0.2",
-  "kaos-core>=0.1.0a9,<0.2",
+  "kaos-core>=0.1.0a10,<0.2",
   # lxml 5.3 (2024-10) is the first release shipping cpython-3.13
   # wheels; older minor versions need libxml2 / libxslt source builds
   # on 3.13. Bumping the declared minimum keeps the min-deps CI gate
