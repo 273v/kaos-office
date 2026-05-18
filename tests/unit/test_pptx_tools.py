@@ -44,7 +44,14 @@ class TestPptxToolMetadata:
 
 
 class TestPptxToolExecution:
-    """Test PPTX tool execution."""
+    """Test PPTX tool execution.
+
+    kaos-core 0.1.0a10 URI contract: absolute filesystem paths must be
+    passed as ``file://`` URIs. The ``pptx_file`` fixture returns a
+    ``Path`` (so existing tests can call ``.as_uri()`` per call); raw
+    nonexistent-path literals are also ``file://`` URIs. See
+    ``kaos-modules/docs/plans/uri-contract-redesign.md``.
+    """
 
     @pytest.fixture
     def pptx_file(self, tmp_path):
@@ -58,7 +65,7 @@ class TestPptxToolExecution:
         from kaos_office.tools import ParsePptxTool
 
         tool = ParsePptxTool()
-        result = await tool.execute({"path": "/nonexistent/test.pptx"})
+        result = await tool.execute({"path": "file:///nonexistent/test.pptx"})
         assert result.isError is True
         assert "not found" in result.require_text().lower()
 
@@ -66,7 +73,7 @@ class TestPptxToolExecution:
         from kaos_office.tools import ParsePptxTool
 
         tool = ParsePptxTool()
-        result = await tool.execute({"path": str(pptx_file)})
+        result = await tool.execute({"path": pptx_file.as_uri()})
         assert result.isError is not True
         assert "Parsed" in result.require_text()
 
@@ -74,7 +81,7 @@ class TestPptxToolExecution:
         from kaos_office.tools import ListSlidesTool
 
         tool = ListSlidesTool()
-        result = await tool.execute({"path": str(pptx_file)})
+        result = await tool.execute({"path": pptx_file.as_uri()})
         assert result.isError is not True
         # Summary in content, structured data in structuredContent
         assert "1 slide" in result.require_text()
@@ -86,7 +93,7 @@ class TestPptxToolExecution:
         from kaos_office.tools import GetSlideTool
 
         tool = GetSlideTool()
-        result = await tool.execute({"path": str(pptx_file), "slide_number": 1})
+        result = await tool.execute({"path": pptx_file.as_uri(), "slide_number": 1})
         assert result.isError is not True
         assert "Test Title" in result.require_text()
 
@@ -94,7 +101,7 @@ class TestPptxToolExecution:
         from kaos_office.tools import GetSlideTool
 
         tool = GetSlideTool()
-        result = await tool.execute({"path": str(pptx_file), "slide_number": 99})
+        result = await tool.execute({"path": pptx_file.as_uri(), "slide_number": 99})
         assert result.isError is True
         assert "out of range" in result.require_text().lower()
 
@@ -102,7 +109,7 @@ class TestPptxToolExecution:
         from kaos_office.tools import ListSlidesTool
 
         tool = ListSlidesTool()
-        result = await tool.execute({"path": "/nonexistent/test.pptx"})
+        result = await tool.execute({"path": "file:///nonexistent/test.pptx"})
         assert result.isError is True
 
 

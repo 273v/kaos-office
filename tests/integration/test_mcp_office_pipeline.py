@@ -107,7 +107,7 @@ async def test_parse_docx_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-parse-docx",
-            {"path": str(docx_path)},
+            {"path": docx_path.as_uri()},
         )
         assert not result.isError
         assert len(result.content) >= 1
@@ -129,7 +129,7 @@ async def test_get_text_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-get-text",
-            {"path": str(docx_path)},
+            {"path": docx_path.as_uri()},
         )
         assert not result.isError
         text = _get_text(result)
@@ -150,7 +150,7 @@ async def test_get_markdown_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-get-markdown",
-            {"path": str(docx_path)},
+            {"path": docx_path.as_uri()},
         )
         assert not result.isError
         text = _get_text(result)
@@ -178,7 +178,7 @@ async def test_metadata_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-metadata",
-            {"path": str(docx_path)},
+            {"path": docx_path.as_uri()},
         )
         assert not result.isError
         # DocxMetadataTool now returns structured data + summary text
@@ -201,7 +201,7 @@ async def test_search_docx_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-search",
-            {"path": str(docx_path), "query": "Hello"},
+            {"path": docx_path.as_uri(), "query": "Hello"},
         )
         assert not result.isError
 
@@ -216,7 +216,7 @@ async def test_docx_error_handling_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-parse-docx",
-            {"path": "/nonexistent/path/test.docx"},
+            {"path": "file:///nonexistent/path/test.docx"},
         )
         assert result.isError
         error_text = _get_text(result)
@@ -244,7 +244,7 @@ async def test_parse_pptx_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-parse-pptx",
-            {"path": str(pptx_path)},
+            {"path": pptx_path.as_uri()},
         )
         assert not result.isError
         assert len(result.content) >= 1
@@ -264,7 +264,7 @@ async def test_list_slides_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-list-slides",
-            {"path": str(pptx_path)},
+            {"path": pptx_path.as_uri()},
         )
         assert not result.isError
         assert result.structuredContent is not None
@@ -287,7 +287,7 @@ async def test_get_slide_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-get-slide",
-            {"path": str(pptx_path), "slide_number": 1},
+            {"path": pptx_path.as_uri(), "slide_number": 1},
         )
         assert not result.isError
         text = _get_text(result)
@@ -308,7 +308,7 @@ async def test_get_slide_out_of_range_via_mcp(tmp_path: Path) -> None:
     async with create_connected_server_and_client_session(app) as session:
         result = await session.call_tool(
             "kaos-office-get-slide",
-            {"path": str(pptx_path), "slide_number": 999},
+            {"path": pptx_path.as_uri(), "slide_number": 999},
         )
         assert result.isError
         assert "out of range" in _get_text(result).lower()
@@ -403,14 +403,14 @@ async def test_real_docx_via_mcp_pipeline(tmp_path: Path) -> None:
         # Parse
         result = await session.call_tool(
             "kaos-office-parse-docx",
-            {"path": str(docx_path)},
+            {"path": docx_path.as_uri()},
         )
         assert not result.isError
 
         # Get markdown
         md_result = await session.call_tool(
             "kaos-office-get-markdown",
-            {"path": str(docx_path)},
+            {"path": docx_path.as_uri()},
         )
         assert not md_result.isError
         md_text = _get_text(md_result)
@@ -419,7 +419,7 @@ async def test_real_docx_via_mcp_pipeline(tmp_path: Path) -> None:
         # Search
         search_result = await session.call_tool(
             "kaos-office-search",
-            {"path": str(docx_path), "query": "paragraph", "top_k": 3},
+            {"path": docx_path.as_uri(), "query": "paragraph", "top_k": 3},
         )
         assert not search_result.isError
 
@@ -439,7 +439,7 @@ async def test_real_pptx_via_mcp_pipeline(tmp_path: Path) -> None:
         # List slides
         slides_result = await session.call_tool(
             "kaos-office-list-slides",
-            {"path": str(pptx_path)},
+            {"path": pptx_path.as_uri()},
         )
         assert not slides_result.isError
         assert slides_result.structuredContent is not None
@@ -449,7 +449,7 @@ async def test_real_pptx_via_mcp_pipeline(tmp_path: Path) -> None:
         # Get slide 1
         slide_result = await session.call_tool(
             "kaos-office-get-slide",
-            {"path": str(pptx_path), "slide_number": 1},
+            {"path": pptx_path.as_uri(), "slide_number": 1},
         )
         assert not slide_result.isError
         assert "Hello World" in _get_text(slide_result)
@@ -457,6 +457,6 @@ async def test_real_pptx_via_mcp_pipeline(tmp_path: Path) -> None:
         # Parse full presentation
         parse_result = await session.call_tool(
             "kaos-office-parse-pptx",
-            {"path": str(pptx_path)},
+            {"path": pptx_path.as_uri()},
         )
         assert not parse_result.isError

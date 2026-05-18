@@ -123,18 +123,23 @@ class TestToolMetadata:
 
 
 class TestToolExecution:
+    # kaos-core 0.1.0a10 URI contract: absolute filesystem paths must be
+    # passed as ``file://`` URIs. Bare ``/abs/path`` strings are rejected
+    # at the resolver to disambiguate from session-VFS bare names. See
+    # ``kaos-modules/docs/plans/uri-contract-redesign.md``. Fixtures and
+    # nonexistent-path literals below return ``file://`` URIs accordingly.
     @pytest.fixture
     def docx_path(self, tmp_path: Path) -> str:
         path = tmp_path / "test.docx"
         path.write_bytes(make_minimal_docx())
-        return str(path)
+        return path.as_uri()
 
     @pytest.fixture
     def pptx_path(self, tmp_path: Path) -> str:
         """Create a minimal PPTX with one slide (default title shape)."""
         path = tmp_path / "test.pptx"
         path.write_bytes(make_minimal_pptx())
-        return str(path)
+        return path.as_uri()
 
     @pytest.fixture
     def pptx_with_notes_path(self, tmp_path: Path) -> str:
@@ -142,12 +147,12 @@ class TestToolExecution:
         path = tmp_path / "test_notes.pptx"
         notes_xml = _make_notes_xml("These are the speaker notes for slide one.")
         path.write_bytes(make_minimal_pptx(notes_xmls={0: notes_xml}))
-        return str(path)
+        return path.as_uri()
 
     @pytest.mark.asyncio
     async def test_parse_docx_file_not_found(self):
         tool = ParseDocxTool()
-        result = await tool.execute({"path": "/nonexistent/file.docx"})
+        result = await tool.execute({"path": "file:///nonexistent/file.docx"})
         assert result.isError is True
 
     @pytest.mark.asyncio
@@ -187,7 +192,7 @@ class TestToolExecution:
     @pytest.mark.asyncio
     async def test_search_pptx_file_not_found(self):
         tool = SearchPptxTool()
-        result = await tool.execute({"path": "/nonexistent/file.pptx", "query": "test"})
+        result = await tool.execute({"path": "file:///nonexistent/file.pptx", "query": "test"})
         assert result.isError is True
         assert "not found" in str(result.content).lower()
 
@@ -209,7 +214,7 @@ class TestToolExecution:
     @pytest.mark.asyncio
     async def test_get_slide_notes_file_not_found(self):
         tool = GetSlideNotesTool()
-        result = await tool.execute({"path": "/nonexistent/file.pptx", "slide": 1})
+        result = await tool.execute({"path": "file:///nonexistent/file.pptx", "slide": 1})
         assert result.isError is True
         assert "not found" in str(result.content).lower()
 

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a6] — 2026-05-17
+
+### Changed
+
+- **kaos-core floor raised to `>=0.1.0a10`** to pick up the URI
+  contract redesign (bare names route through
+  `context.default_vfs_namespace`; `file://` and `vfs://` schemes).
+  See `kaos-modules/docs/plans/uri-contract-redesign.md`. The 15
+  file-input tools route through `resolve_input_path` as
+  pass-throughs; no synthetic bare names internally.
+- **Tests migrated to the new URI contract.** Test fixtures and
+  nonexistent-path literals in `tests/unit/test_tools.py`,
+  `tests/unit/test_pptx_tools.py`,
+  `tests/integration/test_mcp_office_pipeline.py`, and
+  `tests/integration/test_mcp_xlsx_pipeline.py` now supply
+  `file:///abs/path` URIs (via `Path.as_uri()`) instead of bare
+  absolute strings, mirroring how MCP clients will pass
+  trusted-source filesystem paths under the new contract. No
+  production code change in `kaos-office` itself — `tools.py` was
+  already a pure pass-through to `resolve_input_path`.
+
 ## [0.1.0a5] — 2026-05-17
 
 ### Changed
