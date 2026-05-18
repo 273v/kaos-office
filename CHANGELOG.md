@@ -37,6 +37,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Stage 2 of `kaos-modules/docs/plans/docx-numbering-resolution.md`.
 
+- **DOCX writer preserves `numbering_label` round-trip.** When a
+  `Heading`, `Paragraph`, or `ListItem` carries a rendered
+  numbering label (set by the reader from `numbering.xml`), the
+  writer bakes the label as a plain-text run prefix on the
+  paragraph so the round-tripped DOCX renders the same
+  attorney-citable token. The pragmatic trade-off (versus
+  reconstructing a full `<w:abstractNum>` per pattern) is that
+  Word's edit-time renumbering no longer applies to imported
+  sections — acceptable for review / redline workflows where the
+  document is the source of truth, not a regenerable template.
+  Stage 6 of the same plan. Round-trip tests under
+  `tests/unit/test_docx_numbering_roundtrip.py` exercise all three
+  fixture shapes (decimal / NDA / legal-outline) and confirm every
+  visible line from the source markdown survives a write → read
+  pass.
+
 ### Changed
 
 - **DOCX reader populates `numbering_label`** on `Heading`,

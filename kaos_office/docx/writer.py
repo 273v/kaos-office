@@ -558,6 +558,7 @@ def _serialize_block(parent: etree._Element, block: Any, ctx: _WriteContext) -> 
 def _serialize_paragraph(parent: etree._Element, para: Any, ctx: _WriteContext) -> None:
     """Serialize a Paragraph block."""
     p = etree.SubElement(parent, W_P)
+    _emit_numbering_label_run(p, para)
     for inline in para.children:
         _serialize_inline(p, inline, ctx)
 
@@ -571,8 +572,34 @@ def _serialize_heading(parent: etree._Element, heading: Any, ctx: _WriteContext)
     etree.SubElement(ppr, W_PSTYLE, **{qn(W, "val"): style_name})
     etree.SubElement(ppr, qn(W, "outlineLvl"), **{qn(W, "val"): str(depth - 1)})
 
+    _emit_numbering_label_run(p, heading)
     for inline in heading.children:
         _serialize_inline(p, inline, ctx)
+
+
+def _emit_numbering_label_run(p: etree._Element, block: Any) -> None:
+    """Bake a rendered ``numbering_label`` (e.g. ``"Section 11."``) as a
+    plain-text run prefix so the round-tripped DOCX renders the same
+    attorney-citable label the AST received from the source document.
+
+    Word's auto-numbering machinery would also produce that visible
+    string, but recovering the original abstract-numbering definition
+    is a much larger writer change (see
+    ``kaos-modules/docs/plans/docx-numbering-resolution.md`` Stage
+    6). Baking as text is the pragmatic round-trip: any consumer that
+    reads the output sees the citable token regardless of whether they
+    understand ``numbering.xml``. The cost is that Word's edit-time
+    renumbering no longer applies to imported sections — acceptable
+    for review / redline workflows where the document is the source of
+    truth, not a regenerable template.
+    """
+    label = getattr(block, "numbering_label", None)
+    if not label:
+        return
+    r = etree.SubElement(p, W_R)
+    t = etree.SubElement(r, W_T)
+    t.set(_XML_SPACE, "preserve")
+    t.text = f"{label} "
 
 
 def _serialize_list(parent: etree._Element, lst: Any, ctx: _WriteContext, level: int = 0) -> None:
@@ -584,6 +611,7 @@ def _serialize_list(parent: etree._Element, lst: Any, ctx: _WriteContext, level:
 
     for item in lst.children:
         if isinstance(item, ListItem):
+            first_child = True
             for child in item.children:
                 if isinstance(child, (BulletList, OrderedList)):
                     _serialize_list(parent, child, ctx, level=level + 1)
@@ -593,6 +621,17 @@ def _serialize_list(parent: etree._Element, lst: Any, ctx: _WriteContext, level:
                     num_pr = etree.SubElement(ppr, qn(W, "numPr"))
                     etree.SubElement(num_pr, qn(W, "ilvl"), **{qn(W, "val"): str(level)})
                     etree.SubElement(num_pr, qn(W, "numId"), **{qn(W, "val"): str(num_id)})
+                    if first_child:
+                        # Bake the rendered numbering label as plain
+                        # text on the first paragraph of this list
+                        # item so the round-tripped DOCX renders
+                        # exactly the attorney-citable token the AST
+                        # received. The numPr above keeps the
+                        # paragraph list-styled in Word; the inline
+                        # label takes precedence over Word's
+                        # auto-numbering. See Stage 6 of
+                        # kaos-modules/docs/plans/docx-numbering-resolution.md.
+                        _emit_numbering_label_run(p, item)
                     if hasattr(child, "children"):
                         for inline in child.children:
                             _serialize_inline(p, inline, ctx)
@@ -604,6 +643,7 @@ def _serialize_list(parent: etree._Element, lst: Any, ctx: _WriteContext, level:
                             r = etree.SubElement(p, W_R)
                             t = etree.SubElement(r, W_T)
                             t.text = text
+                    first_child = False
 
 
 def _serialize_table(parent: etree._Element, table: Any, ctx: _WriteContext) -> None:
