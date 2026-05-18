@@ -10,7 +10,13 @@ The US-legal subset (``decimal``, ``decimalZero``, ``lowerLetter``,
 plain decimal with a structured log warning. International formats can
 be added incrementally — see
 ``kaos-modules/docs/plans/docx-numbering-resolution.md`` Stage 7.
+
+ruff RUF001/RUF002/RUF003 ambiguous-Unicode rules are disabled at
+file scope: the international tables below are *intentionally*
+populated with Hebrew, Arabic, Chinese, and katakana code-points that
+ruff would otherwise flag as visually similar to ASCII letters.
 """
+# ruff: noqa: RUF001
 
 from __future__ import annotations
 
@@ -119,6 +125,169 @@ def format_none(_value: int) -> str:
     return ""
 
 
+# ── International formats ─────────────────────────────────────────────
+
+_HEBREW_LETTERS: Final[tuple[str, ...]] = (
+    "א",
+    "ב",
+    "ג",
+    "ד",
+    "ה",
+    "ו",
+    "ז",
+    "ח",
+    "ט",
+    "י",
+    "כ",
+    "ל",
+    "מ",
+    "נ",
+    "ס",
+    "ע",
+    "פ",
+    "צ",
+    "ק",
+    "ר",
+    "ש",
+    "ת",
+)
+
+
+def format_hebrew_1(value: int) -> str:
+    """``hebrew1`` — Hebrew letters as a 1-22 sequence.
+
+    Word's ``hebrew1`` cycles through the 22-letter Hebrew alphabet
+    without numerical-value composition; values > 22 wrap (the official
+    Word behavior is implementation-defined past this range, so we
+    follow the predictable wraparound here).
+    """
+    if value <= 0:
+        return ""
+    return _HEBREW_LETTERS[(value - 1) % len(_HEBREW_LETTERS)]
+
+
+_ARABIC_ALPHA: Final[tuple[str, ...]] = (
+    "أ",
+    "ب",
+    "ت",
+    "ث",
+    "ج",
+    "ح",
+    "خ",
+    "د",
+    "ذ",
+    "ر",
+    "ز",
+    "س",
+    "ش",
+    "ص",
+    "ض",
+    "ط",
+    "ظ",
+    "ع",
+    "غ",
+    "ف",
+    "ق",
+    "ك",
+    "ل",
+    "م",
+    "ن",
+    "ه",
+    "و",
+    "ي",
+)
+
+
+def format_arabic_alpha(value: int) -> str:
+    """``arabicAlpha`` — Arabic alphabet letters."""
+    if value <= 0:
+        return ""
+    return _ARABIC_ALPHA[(value - 1) % len(_ARABIC_ALPHA)]
+
+
+_CHINESE_DIGITS_SIMPLIFIED: Final[tuple[str, ...]] = (
+    "〇",
+    "一",
+    "二",
+    "三",
+    "四",
+    "五",
+    "六",
+    "七",
+    "八",
+    "九",
+)
+
+
+def format_chinese_counting(value: int) -> str:
+    """``chineseCounting`` — Simplified Chinese decimal digits.
+
+    Renders each decimal digit using its Chinese character. Standard
+    Chinese counting (with 十 / 百 / 千 composition) is more nuanced;
+    this covers the common 1-99 range Word authors use for sub-lists.
+    """
+    if value <= 0:
+        return ""
+    return "".join(_CHINESE_DIGITS_SIMPLIFIED[int(d)] for d in str(value))
+
+
+_KATAKANA_AIUEO: Final[tuple[str, ...]] = (
+    "ア",
+    "イ",
+    "ウ",
+    "エ",
+    "オ",
+    "カ",
+    "キ",
+    "ク",
+    "ケ",
+    "コ",
+    "サ",
+    "シ",
+    "ス",
+    "セ",
+    "ソ",
+    "タ",
+    "チ",
+    "ツ",
+    "テ",
+    "ト",
+)
+
+
+def format_aiueo(value: int) -> str:
+    """``aiueo`` — Japanese katakana ordering (a, i, u, e, o, ...)."""
+    if value <= 0:
+        return ""
+    return _KATAKANA_AIUEO[(value - 1) % len(_KATAKANA_AIUEO)]
+
+
+_KATAKANA_IROHA: Final[tuple[str, ...]] = (
+    "イ",
+    "ロ",
+    "ハ",
+    "ニ",
+    "ホ",
+    "ヘ",
+    "ト",
+    "チ",
+    "リ",
+    "ヌ",
+    "ル",
+    "ヲ",
+    "ワ",
+    "カ",
+    "ヨ",
+)
+
+
+def format_iroha(value: int) -> str:
+    """``iroha`` — Japanese poem-order katakana sequence."""
+    if value <= 0:
+        return ""
+    return _KATAKANA_IROHA[(value - 1) % len(_KATAKANA_IROHA)]
+
+
 _FORMATTERS: Final[dict[str, Callable[[int], str]]] = {
     "decimal": format_decimal,
     "decimalZero": format_decimal_zero,
@@ -129,6 +298,15 @@ _FORMATTERS: Final[dict[str, Callable[[int], str]]] = {
     "ordinal": format_ordinal,
     "bullet": format_bullet,
     "none": format_none,
+    # International formats. The set covered here is the most common
+    # subset; additional Word formats (hindi*, korean*, thai*, etc.)
+    # can be added incrementally as fixtures surface.
+    "hebrew1": format_hebrew_1,
+    "arabicAlpha": format_arabic_alpha,
+    "chineseCounting": format_chinese_counting,
+    "chineseCountingThousand": format_chinese_counting,
+    "aiueo": format_aiueo,
+    "iroha": format_iroha,
 }
 
 

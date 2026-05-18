@@ -37,6 +37,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Stage 2 of `kaos-modules/docs/plans/docx-numbering-resolution.md`.
 
+- **`<w:pStyle>`-linked numbering** — paragraphs that inherit
+  numbering through their paragraph style (no inline ``<w:numPr>``)
+  now pick up the rendered label. Firm templates routinely link
+  "Heading 1" to a numbering definition so document authors get
+  "Article 1.", "Article 2." automatically without manual numPr
+  maintenance; before this change those headings parsed without
+  labels. ``NumberingDefinitions.resolve_pstyle(style_id)`` does
+  the lookup; ``_handle_paragraph`` consults it when no inline
+  numPr is present. Stage 7a.
+- **International numbering formats** added to the converter
+  table: ``hebrew1``, ``arabicAlpha``, ``chineseCounting``
+  (also ``chineseCountingThousand``), ``aiueo``, and ``iroha``.
+  Each is exercised by the formatter unit tests and the
+  ``format_number`` dispatch test. Stage 7b. Remaining Word
+  formats (``hindi*``, ``korean*``, ``thai*``, ``vietnamese*``,
+  ``ordinalText``, etc.) fall through to the decimal fallback
+  with a structured warning, ready for incremental addition when
+  fixtures surface.
+
 - **DOCX writer preserves `numbering_label` round-trip.** When a
   `Heading`, `Paragraph`, or `ListItem` carries a rendered
   numbering label (set by the reader from `numbering.xml`), the

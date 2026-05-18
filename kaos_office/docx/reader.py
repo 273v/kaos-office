@@ -608,6 +608,17 @@ def _handle_paragraph(el: etree._Element, ctx: ParseContext) -> None:
                 num_id = raw_num_id
                 ilvl_el = num_pr.find(W_ILVL)
                 ilvl = int(ilvl_el.get(W_VAL) or "0") if ilvl_el is not None else 0
+    elif style_id:
+        # Stage 7: ``<w:pStyle>``-linked numbering. When the paragraph
+        # has no inline ``<w:numPr>`` but its style is referenced from
+        # an ``<w:abstractNum>/<w:lvl>/<w:pStyle>`` link, resolve the
+        # implicit ``(num_id, ilvl)`` and proceed as if the paragraph
+        # carried that numPr inline. Firm templates frequently use this
+        # pattern for "Heading 1 = Section N." so the body author can
+        # apply a style without manually maintaining numbering.
+        resolved = ctx.numbering_state.definitions.resolve_pstyle(style_id)
+        if resolved is not None:
+            num_id, ilvl = resolved
 
     if heading_level is not None:
         _flush_open_lists(ctx)
