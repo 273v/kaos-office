@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a5] — 2026-05-17
+
 ### Changed
 
 - **All 15 file-input MCP tools now route their `path` parameter
