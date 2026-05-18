@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`kaos_office.docx.numbering` is now a package**, replacing the
+  single-file module of the same name. New public surface:
+  - `NumberingDefinitions` — the parsed schema. Resolves
+    `(num_id, ilvl)` to a `LevelDefinition`, honoring
+    `<w:lvlOverride>` / `<w:startOverride>`.
+  - `NumberingState` — running counter machine. Emits the rendered
+    visible label (`"11."`, `"(a)"`, `"11(a)(i)"`) for each numbered
+    paragraph as the reader streams the document.
+  - `parse_numbering_xml(numbering_xml_bytes) -> NumberingDefinitions`
+    — replaces ad-hoc XML parsing scattered across the resolver.
+  - `format_number(value, num_fmt)` and `format_lower_letter`,
+    `format_lower_roman`, `format_upper_letter`, `format_upper_roman`,
+    `format_ordinal`, `format_decimal_zero` — converters for visible
+    numerals. Excel-style letter wraparound (`z → aa`) and Roman
+    boundary cases are explicitly tested.
+  - `is_ordered_format`, `BULLET_CHAR` re-exported for convenience.
+- **`NumberingResolver`** preserves its 0.1.0a6 public API
+  (`from_xml`, `is_ordered`, `get_format`, `has_numbering`) as a thin
+  shim over `NumberingDefinitions` so existing callers continue to
+  work unchanged. New code should prefer `NumberingDefinitions` +
+  `NumberingState` because they expose the rendered label, not just a
+  list-type boolean.
+- **OOXML namespace constants** for the newly-parsed elements:
+  `W_LVL_TEXT`, `W_START`, `W_LVL_RESTART`, `W_LVL_OVERRIDE`,
+  `W_START_OVERRIDE`, `W_IS_LGL`, `W_SUFF`, `W_LVL_JC`.
+
+Stage 2 of `kaos-modules/docs/plans/docx-numbering-resolution.md`.
+The DOCX reader will start populating
+`kaos_content.Paragraph.numbering_label` / `Heading.numbering_label` /
+`ListItem.numbering_label` from this resolver in the next stage.
+
 ## [0.1.0a6] — 2026-05-17
 
 ### Changed
