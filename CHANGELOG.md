@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a7] — 2026-05-18
+
+### Changed
+
+- **kaos-content floor raised to `>=0.1.0a12`** to pick up
+  `Paragraph.numbering_label` / `Heading.numbering_label` /
+  `ListItem.numbering_label` on the AST. The DOCX reader populates
+  these fields with the rendered visible numeral from
+  `word/numbering.xml` (e.g. `"Section 11."`, `"(a)"`, `"11(a)(i)"`),
+  the writer round-trips them as plain-text run prefixes, and the
+  serializers in kaos-content emit them verbatim. The transient
+  `# ty: ignore[invalid-argument-type]` / `[unknown-argument]`
+  directives that bridged the unreleased-floor window in the reader
+  and integration tests are removed in lockstep with this bump.
+
 ### Added
 
 - **`kaos_office.docx.numbering` is now a package**, replacing the

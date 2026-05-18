@@ -633,10 +633,7 @@ def _handle_paragraph(el: etree._Element, ctx: ParseContext) -> None:
             if num_id is not None:
                 rendered = ctx.numbering_state.get_formatted_label(num_id, ilvl)
                 label = rendered or None
-            # ``numbering_label`` kwarg lands in kaos-content 0.1.0a11+
-            # (see kaos-modules plan release-coordination note); ignore
-            # the stale signature until the dependency floor bumps.
-            ctx.builder.heading(heading_level, text.strip(), numbering_label=label)  # ty: ignore[invalid-argument-type]
+            ctx.builder.heading(heading_level, text.strip(), numbering_label=label)
             ctx.builder.with_provenance(extractor=_EXTRACTOR)
         return
 
@@ -714,10 +711,7 @@ def _handle_list_paragraph(
 
     # Emit list item (leave it open for potential nested lists)
     inlines = _collect_inlines(el, ctx)
-    # See kaos-content 0.1.0a11 release coordination note in this
-    # file's _handle_paragraph; the kwarg is unavailable on locked
-    # kaos-content but present at runtime.
-    ctx.builder.begin_list_item(numbering_label=numbering_label)  # ty: ignore[unknown-argument]
+    ctx.builder.begin_list_item(numbering_label=numbering_label)
     ctx.list_stack[-1].item_open = True
     if inlines:
         ctx.builder.paragraph(*inlines)

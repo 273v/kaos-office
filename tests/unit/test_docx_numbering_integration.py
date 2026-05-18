@@ -5,15 +5,6 @@ Validates that the rendered numbering label travels from
 node's ``numbering_label`` field. Builds minimal in-memory DOCX
 packages so the test stays fast and hermetic; the heavier
 "real-document" fixtures are exercised in Stage 5.
-
-ty / pyright cannot see ``numbering_label`` on Paragraph / Heading /
-ListItem until the dependency floor is bumped to a kaos-content
-release containing it (kaos-content >= 0.1.0a11). Each
-``.numbering_label`` access in this file therefore carries a narrow
-``# ty: ignore[unresolved-attribute]`` until the floor bump lands.
-That bump is part of the release-coordination step in
-kaos-modules/docs/plans/docx-numbering-resolution.md and removes
-these suppressions in a single follow-up commit.
 """
 
 from __future__ import annotations
@@ -155,7 +146,7 @@ class TestListItemNumberingLabel:
         assert isinstance(top, OrderedList)
         first_item = top.children[0]
         assert isinstance(first_item, ListItem)
-        assert first_item.numbering_label == "1."  # ty: ignore[unresolved-attribute]
+        assert first_item.numbering_label == "1."
 
     def test_second_top_level(self, tmp_path: Path) -> None:
         path = _write_docx(tmp_path, "doc.docx", self.DOCUMENT, _LEGAL_NUMBERING)
@@ -164,7 +155,7 @@ class TestListItemNumberingLabel:
         assert isinstance(top, OrderedList)
         second_item = top.children[1]
         assert isinstance(second_item, ListItem)
-        assert second_item.numbering_label == "2."  # ty: ignore[unresolved-attribute]
+        assert second_item.numbering_label == "2."
 
     def test_nested_first(self, tmp_path: Path) -> None:
         path = _write_docx(tmp_path, "doc.docx", self.DOCUMENT, _LEGAL_NUMBERING)
@@ -183,7 +174,7 @@ class TestListItemNumberingLabel:
         assert nested is not None, "expected nested OrderedList under item 2"
         first_clause = nested.children[0]
         assert isinstance(first_clause, ListItem)
-        assert first_clause.numbering_label == "(a)"  # ty: ignore[unresolved-attribute]
+        assert first_clause.numbering_label == "(a)"
 
     def test_sub_sub_clause(self, tmp_path: Path) -> None:
         path = _write_docx(tmp_path, "doc.docx", self.DOCUMENT, _LEGAL_NUMBERING)
@@ -224,8 +215,8 @@ class TestHeadingNumberingLabel:
         second_heading = doc.body[1]
         assert isinstance(first_heading, Heading)
         assert isinstance(second_heading, Heading)
-        assert first_heading.numbering_label == "1."  # ty: ignore[unresolved-attribute]
-        assert second_heading.numbering_label == "2."  # ty: ignore[unresolved-attribute]
+        assert first_heading.numbering_label == "1."
+        assert second_heading.numbering_label == "2."
 
     def test_heading_without_numbering_has_no_label(self, tmp_path: Path) -> None:
         doc_xml = f"""\
@@ -243,7 +234,7 @@ class TestHeadingNumberingLabel:
         doc = parse_docx(path)
         heading = doc.body[0]
         assert isinstance(heading, Heading)
-        assert heading.numbering_label is None  # ty: ignore[unresolved-attribute]
+        assert heading.numbering_label is None
 
 
 class TestUnnumberedParagraphStaysNone:
@@ -262,7 +253,7 @@ class TestUnnumberedParagraphStaysNone:
         doc = parse_docx(path)
         p = doc.body[0]
         assert isinstance(p, Paragraph)
-        assert p.numbering_label is None  # ty: ignore[unresolved-attribute]
+        assert p.numbering_label is None
 
 
 class TestMixedHeadingAndListSequence:
@@ -326,8 +317,8 @@ class TestMixedHeadingAndListSequence:
         path = _write_docx(tmp_path, "doc.docx", self.DOCUMENT, self.NUMBERING_TWO_INSTANCES)
         doc = parse_docx(path)
         headings = [b for b in doc.body if isinstance(b, Heading)]
-        assert headings[0].numbering_label == "Section 1."  # ty: ignore[unresolved-attribute]
-        assert headings[1].numbering_label == "Section 2."  # ty: ignore[unresolved-attribute]
+        assert headings[0].numbering_label == "Section 1."
+        assert headings[1].numbering_label == "Section 2."
 
     def test_sublist_counter_starts_at_a(self, tmp_path: Path) -> None:
         path = _write_docx(tmp_path, "doc.docx", self.DOCUMENT, self.NUMBERING_TWO_INSTANCES)
@@ -335,7 +326,7 @@ class TestMixedHeadingAndListSequence:
         ordered_list = next(b for b in doc.body if isinstance(b, OrderedList))
         first_item = ordered_list.children[0]
         assert isinstance(first_item, ListItem)
-        assert first_item.numbering_label == "(a)"  # ty: ignore[unresolved-attribute]
+        assert first_item.numbering_label == "(a)"
 
 
 def _collect_list_labels(blocks: tuple) -> list[str]:
