@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-05-15T02:27:02.016324354Z"
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "PT72H"
 
 [options.exclude-newer-package]
@@ -395,7 +395,7 @@ wheels = [
 
 [[package]]
 name = "kaos-mcp"
-version = "0.1.0a3"
+version = "0.1.0a4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -406,9 +406,9 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "starlette" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e6/5d/ce41b0f5b3e08bc998c7a58ed36a7ebc0179aeccfbfa6deef5f556237fc2/kaos_mcp-0.1.0a3.tar.gz", hash = "sha256:fd9ae284d8f47abdac217431621439c167b05d5a5dd1e6c090a5d8aa34d200b5", size = 44938, upload-time = "2026-05-11T01:30:42.08Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/62/dc7a2e725abe8710f1dbeae9ff14802fe4d8edfbca4b67728413efbf9d82/kaos_mcp-0.1.0a4.tar.gz", hash = "sha256:ecef35ee9bab4bf6c48f0169bfbbfe0fd4d52f051fa4831c82ff4eac8eebfe09", size = 46396, upload-time = "2026-05-16T20:41:00.491Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/17/78d6f5dbe40483ac9b0f0a7343058e0cd88c745bc6db33151d769649c5e1/kaos_mcp-0.1.0a3-py3-none-any.whl", hash = "sha256:e6fbc3f803b5fff6f16106b31398cb8cc88100e9cd357c790c3e400d10f266f9", size = 51252, upload-time = "2026-05-11T01:30:40.528Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/ea/3192d0eb2ff5433f2d8a797a75ba5143989b0d7c3d72e378864bad8a2d18/kaos_mcp-0.1.0a4-py3-none-any.whl", hash = "sha256:de200ef808e913b9e985c5842a48b707ca0aa9bbc73fdc966407fe28aeb90a5e", size = 52161, upload-time = "2026-05-16T20:40:59.271Z" },
 ]
 
 [[package]]
