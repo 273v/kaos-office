@@ -437,6 +437,12 @@ class SearchDocxTool(KaosTool):
                                 "score": round(r.score, 4),
                                 "block_ref": r.block_ref,
                                 "section_title": r.section_title,
+                                # Full structural breadcrumb (root-first,
+                                # INCLUDING the immediate section). Empty
+                                # list signals no enclosing heading —
+                                # agents MUST NOT invent section
+                                # identifiers for hits with empty path.
+                                "path": list(r.path),
                             }
                             for r in results.results
                         ],
@@ -720,6 +726,13 @@ class SearchPptxTool(KaosTool):
                                 "score": round(r.score, 4),
                                 "block_ref": r.block_ref,
                                 "section_title": r.section_title,
+                                # Full structural breadcrumb — for PPTX,
+                                # this is typically `[slide title]` when
+                                # the slide has a title placeholder, or
+                                # empty when it doesn't. Agents MUST NOT
+                                # invent slide identifiers for hits with
+                                # empty path.
+                                "path": list(r.path),
                             }
                             for r in results.results
                         ],

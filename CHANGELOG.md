@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a7] — 2026-05-18
+
+### Added
+
+- **`kaos-office-search` and `kaos-office-search-pptx` result dicts**
+  now include `path: list[str]` per hit — the structural breadcrumb
+  (root-first, INCLUDING the immediate section) for the matched
+  paragraph or slide. Empty list is the explicit "no enclosing
+  heading" contract; downstream agents MUST NOT invent section
+  identifiers for hits with empty `path`. See
+  `kaos-modules/docs/plans/persona-matrix-followups.md` §4.
+
+### Changed
+
+- **kaos-content floor raised to `>=0.1.0a11`** to pick up the
+  structural-breadcrumb contract on `SearchResult.path` and
+  `DocumentView.block_path()`.
+
 ## [0.1.0a6] — 2026-05-17
 
 ### Changed
