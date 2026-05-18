@@ -187,6 +187,64 @@ class TestToolExecution:
         result = await tool.execute({"path": docx_path, "query": "Hello"})
         assert result.isError is False
 
+    @pytest.mark.asyncio
+    async def test_search_returns_path_field_on_results(self, tmp_path: Path):
+        """SearchDocxTool result dicts must include a ``path`` field per hit.
+
+        Contract: ``path`` is the structural breadcrumb (root-first,
+        INCLUDING the immediate section). When the doc has no headings
+        the field is still present and is an empty list — the explicit
+        contract that downstream agents must not invent section
+        identifiers. See ``kaos-content.SearchResult.path``.
+        """
+        # Minimal docx with a real Heading1 + body — exercises the
+        # section breadcrumb path.
+        styles_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="Heading1">
+    <w:name w:val="heading 1"/>
+  </w:style>
+</w:styles>"""
+        body_xml = (
+            '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+            "<w:r><w:t>11. GOVERNING LAW</w:t></w:r></w:p>"
+            "<w:p><w:r><w:t>This Agreement shall be governed by Delaware law.</w:t></w:r></w:p>"
+        )
+        path = tmp_path / "headed.docx"
+        path.write_bytes(make_minimal_docx(body_xml=body_xml, styles_xml=styles_xml))
+
+        tool = SearchDocxTool()
+        result = await tool.execute({"path": path.as_uri(), "query": "Delaware"})
+        assert result.isError is False
+        output = result.structuredContent or {}
+        hits = output.get("results") or []
+        assert hits, "expected at least one hit on a heading-bearing docx"
+        for hit in hits:
+            # ``path`` must always be present on the wire — empty list is
+            # the explicit "no enclosing heading" contract.
+            assert "path" in hit, f"missing 'path' on hit: {hit}"
+            assert isinstance(hit["path"], list)
+        # The Delaware paragraph lives under the only heading. Path must
+        # include the verbatim heading text WITH the numbering token.
+        delaware = next(h for h in hits if "delaware" in h["text"].lower())
+        assert delaware["path"] == ["11. GOVERNING LAW"]
+
+    @pytest.mark.asyncio
+    async def test_search_returns_empty_path_when_no_headings(self, docx_path):
+        """No-heading docx → path is empty list (not missing, not null).
+
+        Empty path is the contract that no structural identifier is
+        available — agents must not invent one.
+        """
+        tool = SearchDocxTool()
+        result = await tool.execute({"path": docx_path, "query": "Hello"})
+        assert result.isError is False
+        output = result.structuredContent or {}
+        hits = output.get("results") or []
+        assert hits
+        for hit in hits:
+            assert hit.get("path") == []
+
     # --- SearchPptxTool tests ---
 
     @pytest.mark.asyncio
@@ -208,6 +266,27 @@ class TestToolExecution:
         tool = SearchPptxTool()
         result = await tool.execute({"path": pptx_path, "query": "Test Title"})
         assert result.isError is False
+
+    @pytest.mark.asyncio
+    async def test_search_pptx_returns_path_field(self, pptx_path):
+        """SearchPptxTool result dicts must include a ``path`` field per hit.
+
+        For PPTX, ``path`` is typically the slide title (when the parser
+        emits one as a Heading) or empty otherwise. Field must always
+        be present when a hit is returned.
+        """
+        tool = SearchPptxTool()
+        result = await tool.execute({"path": pptx_path, "query": "Test"})
+        assert result.isError is False
+        output = result.structuredContent or {}
+        hits = output.get("results") or []
+        # When the minimal-pptx parser produces no searchable text the
+        # tool returns zero hits — that's pre-existing behavior we don't
+        # change here. The contract we DO assert is that any returned hit
+        # carries the ``path`` field.
+        for hit in hits:
+            assert "path" in hit, f"missing 'path' on hit: {hit}"
+            assert isinstance(hit["path"], list)
 
     # --- GetSlideNotesTool tests ---
 

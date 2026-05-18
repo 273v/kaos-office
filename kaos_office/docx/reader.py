@@ -41,7 +41,11 @@ from kaos_core.logging import get_logger
 from lxml import etree  # ty: ignore[unresolved-import]
 
 from kaos_office.docx.metadata import DocxMetadata
-from kaos_office.docx.numbering import NumberingResolver
+from kaos_office.docx.numbering import (
+    NumberingResolver,
+    NumberingState,
+    parse_numbering_xml,
+)
 from kaos_office.docx.styles import StyleResolver
 from kaos_office.ooxml.namespace import (
     DOCX_MIME_TYPE,
@@ -136,6 +140,15 @@ class ParseContext:
     builder: DocumentBuilder
     styles: StyleResolver
     numbering: NumberingResolver
+    numbering_state: NumberingState
+    """Running counter machine for rendered numbering labels.
+
+    Carries the same parsed definitions as ``numbering`` but maintains
+    per-list, per-level counter state so callers can ask
+    ``get_formatted_label(num_id, ilvl)`` for the visible numeral on
+    each numbered paragraph as it streams by. See
+    ``kaos-modules/docs/plans/docx-numbering-resolution.md``.
+    """
     rels: dict[str, str]  # rId → target path
     rels_external: dict[str, str]  # rId → external URL
     source_uri: str
@@ -254,9 +267,15 @@ def parse_docx(
         styles_part = _resolve_part(doc_rels, pkg, doc_dir, "styles")
         styles = StyleResolver.from_xml(styles_part)
 
-        # Parse numbering
+        # Parse numbering. ``NumberingResolver`` and ``NumberingState``
+        # share the parsed definitions: the resolver remains the
+        # back-compatible ordered/format API; the state machine emits
+        # rendered labels (``"11."``, ``"(a)"``, ``"11(a)(i)"``) for
+        # attorney-citable provenance.
         numbering_part = _resolve_part(doc_rels, pkg, doc_dir, "numbering")
-        numbering = NumberingResolver.from_xml(numbering_part)
+        numbering_defs = parse_numbering_xml(numbering_part)
+        numbering = NumberingResolver(definitions=numbering_defs)
+        numbering_state = NumberingState(numbering_defs)
 
         # Parse document metadata
         core_xml = pkg.read_part("docProps/core.xml") if pkg.has_part("docProps/core.xml") else None
@@ -299,6 +318,7 @@ def parse_docx(
             builder=builder,
             styles=styles,
             numbering=numbering,
+            numbering_state=numbering_state,
             rels=rels_map,
             rels_external=rels_external,
             source_uri=source_uri,
@@ -574,12 +594,46 @@ def _handle_paragraph(el: etree._Element, ctx: ParseContext) -> None:
                 with contextlib.suppress(ValueError):
                     heading_level = min(int(val) + 1, 6)
 
+    # Detect inline numPr so we can either route to the list path OR
+    # attach the rendered numbering label to a heading / paragraph.
+    # numId="0" is Word's "no list" sentinel — treat as no numbering.
+    num_pr = ppr.find(W_NUMPR) if ppr is not None else None
+    num_id: str | None = None
+    ilvl: int = 0
+    if num_pr is not None:
+        num_id_el = num_pr.find(W_NUMID)
+        if num_id_el is not None:
+            raw_num_id = num_id_el.get(W_VAL) or "0"
+            if raw_num_id != "0":
+                num_id = raw_num_id
+                ilvl_el = num_pr.find(W_ILVL)
+                ilvl = int(ilvl_el.get(W_VAL) or "0") if ilvl_el is not None else 0
+    elif style_id:
+        # Stage 7: ``<w:pStyle>``-linked numbering. When the paragraph
+        # has no inline ``<w:numPr>`` but its style is referenced from
+        # an ``<w:abstractNum>/<w:lvl>/<w:pStyle>`` link, resolve the
+        # implicit ``(num_id, ilvl)`` and proceed as if the paragraph
+        # carried that numPr inline. Firm templates frequently use this
+        # pattern for "Heading 1 = Section N." so the body author can
+        # apply a style without manually maintaining numbering.
+        resolved = ctx.numbering_state.definitions.resolve_pstyle(style_id)
+        if resolved is not None:
+            num_id, ilvl = resolved
+
     if heading_level is not None:
         _flush_open_lists(ctx)
         inlines = _collect_inlines(el, ctx)
         text = _inlines_to_text(inlines)
         if text.strip():
-            ctx.builder.heading(heading_level, text.strip())
+            # Legal docs commonly stamp the heading with Word's auto-
+            # numbering machinery so the attorney sees
+            # "Section 11. GOVERNING LAW". Resolve the rendered label
+            # here so it travels with the heading on the AST.
+            label: str | None = None
+            if num_id is not None:
+                rendered = ctx.numbering_state.get_formatted_label(num_id, ilvl)
+                label = rendered or None
+            ctx.builder.heading(heading_level, text.strip(), numbering_label=label)
             ctx.builder.with_provenance(extractor=_EXTRACTOR)
         return
 
@@ -593,15 +647,9 @@ def _handle_paragraph(el: etree._Element, ctx: ParseContext) -> None:
         return
 
     # 3. Check for list item
-    num_pr = ppr.find(W_NUMPR) if ppr is not None else None
-    if num_pr is not None:
-        num_id_el = num_pr.find(W_NUMID)
-        if num_id_el is not None:
-            num_id = num_id_el.get(W_VAL) or "0"
-            # numId="0" means "no list" (explicit removal)
-            if num_id != "0":
-                _handle_list_paragraph(el, num_pr, ctx)
-                return
+    if num_id is not None:
+        _handle_list_paragraph(el, num_pr, ctx, num_id=num_id, ilvl=ilvl)
+        return
 
     # 4. Regular paragraph
     _flush_open_lists(ctx)
@@ -615,13 +663,29 @@ def _handle_list_paragraph(
     el: etree._Element,
     num_pr: etree._Element,
     ctx: ParseContext,
+    *,
+    num_id: str | None = None,
+    ilvl: int | None = None,
 ) -> None:
-    """Process a paragraph that is a list item."""
-    num_id_el = num_pr.find(W_NUMID)
-    ilvl_el = num_pr.find(W_ILVL)
-    num_id = num_id_el.get(W_VAL) if num_id_el is not None else "0"
-    ilvl = int(ilvl_el.get(W_VAL) or "0") if ilvl_el is not None else 0
+    """Process a paragraph that is a list item.
+
+    ``num_id`` / ``ilvl`` may be supplied by the caller when they have
+    already been extracted from ``num_pr`` (avoids re-parsing). They
+    are still validated here to keep the helper safe to call directly.
+    """
+    if num_id is None:
+        num_id_el = num_pr.find(W_NUMID)
+        num_id = num_id_el.get(W_VAL) if num_id_el is not None else "0"
+    if ilvl is None:
+        ilvl_el = num_pr.find(W_ILVL)
+        ilvl = int(ilvl_el.get(W_VAL) or "0") if ilvl_el is not None else 0
     ordered = ctx.numbering.is_ordered(num_id, str(ilvl))
+
+    # Resolve the rendered numbering label BEFORE any builder work so
+    # the running counter advances in document order regardless of how
+    # the list state machine reshuffles the stack below.
+    rendered_label = ctx.numbering_state.get_formatted_label(num_id, ilvl)
+    numbering_label = rendered_label or None
 
     # Close lists that are deeper than current level or different list ID at same level
     while ctx.list_stack and (
@@ -647,7 +711,7 @@ def _handle_list_paragraph(
 
     # Emit list item (leave it open for potential nested lists)
     inlines = _collect_inlines(el, ctx)
-    ctx.builder.begin_list_item()
+    ctx.builder.begin_list_item(numbering_label=numbering_label)
     ctx.list_stack[-1].item_open = True
     if inlines:
         ctx.builder.paragraph(*inlines)
@@ -1198,10 +1262,16 @@ def _parse_header_footer_part(
     headers) but not per-part rels files.
     """
     sub_builder = DocumentBuilder()
+    # Headers/footers are a separate document flow in Word: numbering
+    # counters do not share with the body. Give the sub-context a
+    # fresh ``NumberingState`` over the same parsed definitions so a
+    # numbered list in a header starts from its declared ``start``
+    # value rather than continuing the body's counter.
     sub_ctx = ParseContext(
         builder=sub_builder,
         styles=parent_ctx.styles,
         numbering=parent_ctx.numbering,
+        numbering_state=NumberingState(parent_ctx.numbering.definitions),
         rels=parent_ctx.rels,
         rels_external=parent_ctx.rels_external,
         source_uri=parent_ctx.source_uri,

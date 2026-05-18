@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a7] — 2026-05-18
+
+### Added
+
+- **`kaos_office.docx.numbering` is now a package**, replacing the
+  single-file module of the same name. New public surface:
+  - `NumberingDefinitions` — the parsed schema. Resolves
+    `(num_id, ilvl)` to a `LevelDefinition`, honoring
+    `<w:lvlOverride>` / `<w:startOverride>`.
+  - `NumberingState` — running counter machine. Emits the rendered
+    visible label (`"11."`, `"(a)"`, `"11(a)(i)"`) for each numbered
+    paragraph as the reader streams the document.
+  - `parse_numbering_xml(numbering_xml_bytes) -> NumberingDefinitions`
+    — replaces ad-hoc XML parsing scattered across the resolver.
+  - `format_number(value, num_fmt)` and `format_lower_letter`,
+    `format_lower_roman`, `format_upper_letter`, `format_upper_roman`,
+    `format_ordinal`, `format_decimal_zero` — converters for visible
+    numerals. Excel-style letter wraparound (`z → aa`) and Roman
+    boundary cases are explicitly tested.
+  - `is_ordered_format`, `BULLET_CHAR` re-exported for convenience.
+- **`NumberingResolver`** preserves its 0.1.0a6 public API
+  (`from_xml`, `is_ordered`, `get_format`, `has_numbering`) as a thin
+  shim over `NumberingDefinitions` so existing callers continue to
+  work unchanged. New code should prefer `NumberingDefinitions` +
+  `NumberingState` because they expose the rendered label, not just a
+  list-type boolean.
+- **OOXML namespace constants** for the newly-parsed elements:
+  `W_LVL_TEXT`, `W_START`, `W_LVL_RESTART`, `W_LVL_OVERRIDE`,
+  `W_START_OVERRIDE`, `W_IS_LGL`, `W_SUFF`, `W_LVL_JC`.
+- **`<w:pStyle>`-linked numbering** — paragraphs that inherit
+  numbering through their paragraph style (no inline `<w:numPr>`)
+  now pick up the rendered label. Firm templates routinely link
+  "Heading 1" to a numbering definition so document authors get
+  "Article 1.", "Article 2." automatically without manual numPr
+  maintenance; before this change those headings parsed without
+  labels. `NumberingDefinitions.resolve_pstyle(style_id)` does the
+  lookup; `_handle_paragraph` consults it when no inline numPr is
+  present.
+- **International numbering formats** added to the converter table:
+  `hebrew1`, `arabicAlpha`, `chineseCounting` (also
+  `chineseCountingThousand`), `aiueo`, and `iroha`. Each is
+  exercised by the formatter unit tests and the `format_number`
+  dispatch test. Remaining Word formats (`hindi*`, `korean*`,
+  `thai*`, `vietnamese*`, `ordinalText`, etc.) fall through to the
+  decimal fallback with a structured warning, ready for incremental
+  addition when fixtures surface.
+- **`kaos-office-search` and `kaos-office-search-pptx` result dicts**
+  now include `path: list[str]` per hit — the structural breadcrumb
+  (root-first, INCLUDING the immediate section) for the matched
+  paragraph or slide. Empty list is the explicit "no enclosing
+  heading" contract; downstream agents MUST NOT invent section
+  identifiers for hits with empty `path`. See
+  `kaos-modules/docs/plans/persona-matrix-followups.md` §4.
+
+### Changed
+
+- **kaos-content floor raised to `>=0.1.0a12`** to pick up the
+  structural-breadcrumb contract on `SearchResult.path` /
+  `DocumentView.block_path()` AND the new `numbering_label` field on
+  `Paragraph` / `Heading` / `ListItem`. The DOCX reader populates
+  `numbering_label` with the rendered visible numeral from
+  `word/numbering.xml` (e.g. `"Section 11."`, `"(a)"`, `"11(a)(i)"`),
+  the writer round-trips them as plain-text run prefixes, and the
+  serializers in kaos-content emit them verbatim.
+- **DOCX reader populates `numbering_label`** on `Heading`,
+  `Paragraph`, and `ListItem` AST nodes. `ParseContext` now carries
+  a `NumberingState` alongside the existing `NumberingResolver`; for
+  each paragraph carrying `<w:numPr>` with a non-zero `numId`, the
+  rendered visible label is resolved in document order and attached
+  to the AST node. Headings that inherit numbering through Word's
+  auto-numbering machinery (the common legal pattern: `Section 11.
+  GOVERNING LAW`) now carry the attorney-citable label that the
+  previous reader silently dropped. List items receive the same
+  treatment, replacing the silent fall-through to position-based
+  recomputation downstream.
+- **DOCX writer preserves `numbering_label` round-trip.** When a
+  `Heading`, `Paragraph`, or `ListItem` carries a rendered numbering
+  label (set by the reader from `numbering.xml`), the writer bakes
+  the label as a plain-text run prefix on the paragraph so the
+  round-tripped DOCX renders the same attorney-citable token. The
+  pragmatic trade-off (versus reconstructing a full `<w:abstractNum>`
+  per pattern) is that Word's edit-time renumbering no longer
+  applies to imported sections — acceptable for review / redline
+  workflows where the document is the source of truth, not a
+  regenerable template. Round-trip tests under
+  `tests/unit/test_docx_numbering_roundtrip.py` exercise all three
+  fixture shapes (decimal / NDA / legal-outline).
+
+Stages 1c (search-path) + 2-7 (docx-numbering-resolution) of the
+respective plans under `kaos-modules/docs/plans/`.
+
 ## [0.1.0a6] — 2026-05-17
 
 ### Changed
