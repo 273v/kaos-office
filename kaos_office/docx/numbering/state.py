@@ -80,35 +80,22 @@ class NumberingState:
     # ── Counter state ──────────────────────────────────────────────
 
     def _update_counters(self, num_id: str, level: int, level_def: LevelDefinition) -> None:
-        if num_id != self._last_num_id:
-            # New numId entirely — start fresh.
-            self._counters[num_id] = {}
-            self._init_level(num_id, level, level_def)
-            self._last_num_id = num_id
-            self._last_level = level
-            return
-
         bucket = self._counters.setdefault(num_id, {})
+        same_flow = num_id == self._last_num_id and self._last_level is not None
 
-        # First-touch at this level OR a deeper level: just initialize.
-        # (No deeper-level counters exist that could need restart.)
-        if self._last_level is None or level > self._last_level:
-            # Going deeper: only init if the deeper counter is absent
-            # — when it's present, it survived a prior shallow advance
-            # under ``lvlRestart=0`` and we should increment instead.
-            if level in bucket:
-                bucket[level] += 1
-            else:
-                self._init_level(num_id, level, level_def)
-        else:
-            # Same or shallower level — first restart any deeper levels
-            # whose lvlRestart policy is triggered, then advance the
-            # current level's counter.
+        # lvlRestart applies within a single numId flow. When an
+        # unrelated numId interrupts (e.g. a heading numbered "Section
+        # 1." appearing between two items of a different sub-clause
+        # list), each numId's counters survive untouched — that's the
+        # contract real Word documents rely on for two-axis
+        # heading / sub-clause numbering.
+        if same_flow and self._last_level is not None and level <= self._last_level:
             self._restart_deeper_levels(num_id, level)
-            if level in bucket:
-                bucket[level] += 1
-            else:
-                self._init_level(num_id, level, level_def)
+
+        if level in bucket:
+            bucket[level] += 1
+        else:
+            self._init_level(num_id, level, level_def)
 
         self._last_num_id = num_id
         self._last_level = level

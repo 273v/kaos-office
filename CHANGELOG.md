@@ -36,9 +36,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `W_START_OVERRIDE`, `W_IS_LGL`, `W_SUFF`, `W_LVL_JC`.
 
 Stage 2 of `kaos-modules/docs/plans/docx-numbering-resolution.md`.
-The DOCX reader will start populating
-`kaos_content.Paragraph.numbering_label` / `Heading.numbering_label` /
-`ListItem.numbering_label` from this resolver in the next stage.
+
+### Changed
+
+- **DOCX reader populates `numbering_label`** on `Heading`,
+  `Paragraph`, and `ListItem` AST nodes (Stage 3 of the same plan).
+  `ParseContext` now carries a `NumberingState` alongside the
+  existing `NumberingResolver`; for each paragraph carrying
+  `<w:numPr>` with a non-zero `numId`, the rendered visible label
+  (e.g. `"11."`, `"Section 11."`, `"(a)"`, `"11(a)(i)"`) is resolved
+  in document order and attached to the AST node. Headings that
+  inherit numbering through Word's auto-numbering machinery (the
+  common legal pattern: `Section 11. GOVERNING LAW`) now carry the
+  attorney-citable label that the previous reader silently
+  dropped. List items receive the same treatment, replacing the
+  silent fall-through to position-based recomputation downstream.
+  This **depends on `kaos-content >= 0.1.0a11`** (the release that
+  introduces `numbering_label`). The dependency floor will be bumped
+  in lockstep with that release; until then this branch's CI cannot
+  resolve dependencies cleanly — that's the intentional release
+  coordination signal called out in the plan.
 
 ## [0.1.0a6] — 2026-05-17
 
