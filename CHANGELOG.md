@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a8] — 2026-05-20
+
+### Changed
+
+- Bumped minimum `kaos-core` to `0.1.0a12` (post-URI-redesign +
+  Capability type). kaos-office does not use the URI redesign
+  directly — the bump aligns the supported floor with the rest of
+  the kaos-* DAG ahead of 0.1.0 GA.
+- Refreshed `uv.lock` to pick up `kaos-core 0.1.0a12` and
+  `kaos-nlp-core 0.1.0a8`.
+
+### Internal
+
+- WU-F.5 of the 0.1.0 GA plan
+  (`kaos-modules/docs/plans/2026-05-20-0.1.0-ga-plan.md`):
+  catch-up to kaos-core 0.1.0a12.
+
 ## [0.1.0a7] — 2026-05-18
 
 ### Added
