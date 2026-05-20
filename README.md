@@ -36,18 +36,18 @@ will not depend on AGPL or GPL libraries.
 ## Install
 
 ```bash
-uv add kaos-office
+uv add "kaos-office>=0.1.0"
 # or
-pip install kaos-office
+pip install "kaos-office>=0.1.0"
 
 # PPTX writer (python-pptx)
-uv add 'kaos-office[pptx]'
+uv add 'kaos-office[pptx]>=0.1.0'
 
 # Calamine XLSX fast-path + openpyxl formula extraction
-uv add 'kaos-office[xlsx]'
+uv add 'kaos-office[xlsx]>=0.1.0'
 
 # BM25 sentence-level search via kaos-nlp-core
-uv add 'kaos-office[nlp]'
+uv add 'kaos-office[nlp]>=0.1.0'
 ```
 
 `kaos-office` requires Python **3.13** or newer (3.14 is supported).
@@ -161,10 +161,19 @@ the file opens in any viewer) and translates internally to the
 |---|---|
 | **Python** | 3.13, 3.14 |
 | **OS** | Linux, macOS, Windows (pure-Python wheel; the only native code is the `lxml` wheel) |
-| **Maturity** | Alpha (`Development Status :: 3 - Alpha`). The public API is documented in `kaos_office.__all__`. |
+| **Maturity** | 0.1.0 GA. The public API is documented in `kaos_office.__all__`. |
 | **Stability policy** | Pre-1.0: minor bumps may change behaviour. Every change is documented in [`CHANGELOG.md`](CHANGELOG.md). The MCP tool surface (`kaos-office-*` names) and the `KAOS_OFFICE_*` environment-variable namespace are public API and follow the same policy. |
 | **Test coverage** | 492 unit tests plus a 144-test integration tier covering DOCX / PPTX / XLSX round-trip fidelity against real-world fixtures. Bounded unit gate (`pytest tests/unit -q --no-cov`) finishes in ~30s. |
 | **Type checker** | Validated with [`ty`](https://docs.astral.sh/ty/), Astral's Python type checker. |
+
+## Documentation
+
+Per-package reference: see in-tree docstrings and
+[CHANGELOG.md](CHANGELOG.md).
+
+Cross-cutting KAOS guides (agentic patterns, persona presets, settings
+policy, citations, MCP data flow, migration to 0.1.0 GA) live in
+[`kaos-modules/docs/guides/`](https://github.com/273v/kaos-modules/tree/main/docs/guides).
 
 ## Companion packages
 
