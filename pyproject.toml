@@ -41,8 +41,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "kaos-content[markdown]>=0.1.0rc1,<0.2",
-  "kaos-core>=0.1.0rc1,<0.2",
+  "kaos-content[markdown]>=0.1.0,<0.2",
+  "kaos-core>=0.1.0,<0.2",
   # lxml 5.3 (2024-10) is the first release shipping cpython-3.13
   # wheels; older minor versions need libxml2 / libxslt source builds
   # on 3.13. Bumping the declared minimum keeps the min-deps CI gate
@@ -59,8 +59,8 @@ kaos-office-serve = "kaos_office.serve:main"
 # refuses to resolve any declared extra whose package isn't on PyPI yet;
 # F009 #4. Now resolvable.)
 [project.optional-dependencies]
-mcp = ["kaos-mcp>=0.1.0rc1,<0.2"]
-nlp = ["kaos-nlp-core>=0.1.0rc1,<0.2"]
+mcp = ["kaos-mcp>=0.1.0,<0.2"]
+nlp = ["kaos-nlp-core>=0.1.0,<0.2"]
 pptx = [
     "python-pptx>=1.0",
 ]
@@ -82,7 +82,7 @@ xlsx-formulas = [
 # tests) are stripped here at 0.1.0a1 — re-add at 0.1.0a2 once they ship.
 # kaos-nlp-core is on PyPI so it stays for the [nlp]-extra integration tests.
 dev = [
-  "kaos-nlp-core>=0.1.0rc1,<0.2",
+  "kaos-nlp-core>=0.1.0,<0.2",
   "python-pptx>=1.0",
   "python-calamine>=0.6",
   "openpyxl>=3.1",
