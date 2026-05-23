@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-05-23
+
+audit-04 remediation bundle: F-001 PPTX base dep, F-002 writer re-export, Family D classifier.
+
 ### Changed — `python-pptx` promoted to a base dependency
 
 Closes audit-04/kaos-office.md F-001. `pyproject.toml` previously
