@@ -20,14 +20,14 @@ from pathlib import Path
 from kaos_content.search import SearchResult, SearchResults, search_document
 
 from kaos_office._version import __version__
-from kaos_office.docx.reader import parse_docx
+from kaos_office.docx import parse_docx, write_docx
 from kaos_office.errors import (
     DocxExtractionError,
     KaosOfficeError,
     PptxExtractionError,
     XlsxExtractionError,
 )
-from kaos_office.pptx.reader import parse_pptx
+from kaos_office.pptx import parse_pptx, write_pptx
 from kaos_office.tools import (
     DocxMetadataTool,
     GetDocxMarkdownTool,
@@ -48,7 +48,7 @@ from kaos_office.tools import (
     register_office_documents_tools,
     register_office_tools,
 )
-from kaos_office.xlsx.reader import parse_xlsx
+from kaos_office.xlsx import list_sheets, parse_xlsx, write_xlsx
 
 
 def extract_to_markdown(path: str | Path, **kwargs: object) -> str:
@@ -121,6 +121,7 @@ __all__ = [
     "XlsxMetadataTool",
     "__version__",
     "extract_to_markdown",
+    "list_sheets",
     "parse_docx",
     "parse_pptx",
     "parse_xlsx",
@@ -128,4 +129,7 @@ __all__ = [
     "register_office_documents_tools",
     "register_office_tools",
     "search_document",
+    "write_docx",
+    "write_pptx",
+    "write_xlsx",
 ]
