@@ -28,6 +28,26 @@ deps (was three) and to clarify `[pptx]` is a no-op alias.
 Behavioral break: zero. The base install gets ~1.5 MB larger; nothing
 that previously worked stops working.
 
+### Changed — F-002 writer re-export
+
+- **audit-04 F-002 writer re-export.** Top-level `kaos_office.__all__`
+  now exposes the four writer / list helpers that the parser side
+  already used: `write_docx`, `write_pptx`, `write_xlsx`, and
+  `list_sheets`. Pre-fix the parser surface (`parse_docx`,
+  `parse_pptx`, `parse_xlsx`) was re-exported at the top level while
+  the matching writers were reachable only via the subpackages — an
+  asymmetric facade the audit flagged as Family E `__all__` drift.
+  Re-exports go through `kaos_office.docx`, `kaos_office.pptx`, and
+  `kaos_office.xlsx` so the existing lazy `python-pptx` ImportError
+  wrapper for `write_pptx` is preserved.
+
+### Tests
+
+- `tests/unit/test_writer_reexport.py` — pins identity (top-level IS
+  the subpackage object), `__all__` membership, and the parser /
+  writer symmetry contract so a future refactor can't quietly reopen
+  the asymmetry.
+
 
 ## [0.1.0] — 2026-05-20
 
