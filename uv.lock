@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-05-18T00:25:38.06989149Z"
+exclude-newer = "2026-05-20T16:49:31.889217214Z"
 exclude-newer-span = "PT72H"
 
 [options.exclude-newer-package]
@@ -434,6 +434,7 @@ dependencies = [
     { name = "kaos-content", extra = ["markdown"] },
     { name = "kaos-core" },
     { name = "lxml" },
+    { name = "python-pptx" },
 ]
 
 [package.optional-dependencies]
@@ -482,6 +483,7 @@ requires-dist = [
     { name = "openpyxl", marker = "extra == 'xlsx-formulas'", specifier = ">=3.1" },
     { name = "python-calamine", marker = "extra == 'xlsx'", specifier = ">=0.6" },
     { name = "python-calamine", marker = "extra == 'xlsx-calamine'", specifier = ">=0.6" },
+    { name = "python-pptx", specifier = ">=1.0" },
     { name = "python-pptx", marker = "extra == 'pptx'", specifier = ">=1.0" },
 ]
 provides-extras = ["mcp", "nlp", "pptx", "xlsx", "xlsx-calamine", "xlsx-formulas"]

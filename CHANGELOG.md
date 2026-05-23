@@ -7,13 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Changed — `python-pptx` promoted to a base dependency
 
-- `pyproject.toml` classifier bumped from `Development Status :: 3 - Alpha`
-  to `Development Status :: 5 - Production/Stable` to reflect the
-  0.1.0 GA release (WU-L #543) that froze the public API for the
-  0.1.x line. Closes audit-04/kaos-office.md Family D (classifier drift).
+Closes audit-04/kaos-office.md F-001. `pyproject.toml` previously
+kept `python-pptx>=1.0` only under the `[pptx]` extra (scoped to the
+writer at 0.1.0a1). But `parse_pptx()` is part of the package's
+advertised core surface — the README lists PPTX alongside DOCX and
+XLSX in the quick-start, 5 read-only PPTX MCP tools call into
+`kaos_office.pptx`, and the kaos-ui SPA upload parser invokes
+`parse_pptx()` directly. Users on the documented base install hit
+`ImportError: python-pptx` before any file validation.
 
+Now declared as a base runtime dep. `[pptx]` remains a (no-op)
+backwards-compatible alias; existing `pip install
+'kaos-office[pptx]'` install commands still work.
+
+README quick-start + concept section updated to describe four base
+deps (was three) and to clarify `[pptx]` is a no-op alias.
+
+Behavioral break: zero. The base install gets ~1.5 MB larger; nothing
+that previously worked stops working.
 
 
 ## [0.1.0] — 2026-05-20
