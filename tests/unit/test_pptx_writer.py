@@ -469,6 +469,20 @@ class TestPptxLazyWrappers:
         sys.modules.pop("kaos_office.pptx", None)
         sys.modules.pop("kaos_office.pptx.writer", None)
 
+        # Re-import the fresh kaos_office.pptx subpackage and rebind the
+        # top-level kaos_office.* references that were captured at the
+        # original `from kaos_office.pptx import ...` import time. Without
+        # this, kaos_office.write_pptx keeps pointing at the OLD function
+        # object from the now-evicted module, and any later test that
+        # asserts `kaos_office.write_pptx is kaos_office.pptx.write_pptx`
+        # (e.g. test_writer_reexport.py F-002 regression) sees two
+        # different function objects from before/after this pop cycle.
+        import kaos_office as _kaos_office
+
+        fresh_pptx = importlib.import_module("kaos_office.pptx")
+        _kaos_office.write_pptx = fresh_pptx.write_pptx
+        _kaos_office.parse_pptx = fresh_pptx.parse_pptx
+
 
 # ---------------------------------------------------------------------------
 # Performance
