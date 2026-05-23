@@ -22,14 +22,15 @@ annotations, tracked changes, and per-section page setup); XLSX produces
 The package also ships 17 read / write MCP tools and a 12-subcommand
 admin CLI for agentic workflows.
 
-The base install is intentionally small — three runtime dependencies
-(`kaos-content[markdown]`, `kaos-core`, `lxml`) and no compiled native
-code beyond the `lxml` wheel. Everything OOXML-shaped is parsed and
-written with `lxml` directly so the read / write paths stay symmetric;
-the optional extras only kick in when you want a different engine.
-`[pptx]` adds `python-pptx` (MIT) for the PPTX writer; `[xlsx]`
-aggregates `python-calamine` (MIT, Rust — 7-28× faster XLSX read) and
-`openpyxl` (MIT, formula extraction) — pick `[xlsx-calamine]` or
+The base install is intentionally small — four runtime dependencies
+(`kaos-content[markdown]`, `kaos-core`, `lxml`, `python-pptx`) and no
+compiled native code beyond the `lxml` wheel. DOCX and XLSX read /
+write paths use `lxml` directly so they stay symmetric; PPTX read /
+write goes through `python-pptx` (MIT) — both `parse_pptx()` and
+`write_pptx()` work without any extras. `[pptx]` is now a no-op alias
+kept for backwards compatibility. `[xlsx]` aggregates
+`python-calamine` (MIT, Rust — 7-28× faster XLSX read) and `openpyxl`
+(MIT, formula extraction) — pick `[xlsx-calamine]` or
 `[xlsx-formulas]` individually if you want only one. We do not and
 will not depend on AGPL or GPL libraries.
 

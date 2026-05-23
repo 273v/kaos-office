@@ -48,6 +48,14 @@ dependencies = [
   # on 3.13. Bumping the declared minimum keeps the min-deps CI gate
   # honest. lxml 6.x is what the highest-resolution lock pulls.
   "lxml>=5.3",
+  # python-pptx is a base dep, not an extra: `parse_pptx()` is part
+  # of the package's advertised core surface (README quick-start lists
+  # PPTX alongside DOCX + XLSX) and the 5 read-only PPTX MCP tools
+  # plus the kaos-ui SPA upload parser all import from kaos_office.pptx
+  # at call time. Keeping it behind `[pptx]` (originally scoped to
+  # writer-only) made the README's base-install claim false —
+  # audit-04/kaos-office.md F-001.
+  "python-pptx>=1.0",
 ]
 
 [project.scripts]
