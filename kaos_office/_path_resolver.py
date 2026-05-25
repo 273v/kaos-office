@@ -89,24 +89,33 @@ async def resolve_office_input(
         for VFS / artifact-store reads; without a runtime, only
         absolute filesystem paths resolve.
     format
-        Office format the caller expects. Selects the mime allowlist
-        that gets passed to the resolver so mismatched artifacts
-        (e.g. a PDF passed to a DOCX tool) fail fast with an
-        agent-friendly hint rather than a downstream parser exception.
+        Office format the caller expects. Surfaced via
+        ``_MIMES_BY_FORMAT[format]`` for tools that want to
+        content-sniff bytes post-resolve and emit a friendlier
+        "try kaos-pdf-extract-parse instead" error when the bytes
+        don't match this format.
+
+        **NOT passed as ``allowed_mime_types``** to the resolver:
+        the resolver guesses mime from filename SUFFIX only, and a
+        real DOCX saved as ``contract.pdf`` (which attorneys do
+        constantly) was rejected with "appears to be
+        'application/pdf'; this tool requires DOCX" even though the
+        bytes were valid OOXML. Suffix-driven gating is the wrong
+        layer. Surfaced by the corpus-stress suite (S10) on
+        2026-05-24.
 
     Raises
     ------
     InputPathResolutionError
-        On empty input, missing file, unsupported scheme, mime
-        mismatch, or runtime/context unavailability. Catch sites
-        should compose the error via ``exc.to_agent_message()``.
+        On empty input, missing file, unsupported scheme, or
+        runtime/context unavailability. Catch sites should compose
+        the error via ``exc.to_agent_message()``.
     """
-    mimes = _MIMES_BY_FORMAT[format]
     ctx = context if context is not None else _cli_context()
     async with resolve_input_path(
         path_or_uri,
         context=ctx,
-        allowed_mime_types=mimes,
+        allowed_mime_types=None,
     ) as resolved:
         yield resolved
 

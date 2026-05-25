@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-05-25
+
+CS-B1 fix: drop suffix-driven MIME allowlist in office path resolver
+so DOCX/PPTX/XLSX files saved under a wrong extension are accepted
+and content-sniffed downstream instead of being rejected up front.
+
+### Changed — `resolve_office_input` no longer passes `allowed_mime_types`
+
+Mirrors the kaos-pdf 0.1.2 fix (commit 406ba2a). The kaos-core
+resolver guesses MIME from the filename SUFFIX only, so a real DOCX
+saved as ``contract.pdf`` (which attorneys do constantly) was
+rejected with ``"appears to be 'application/pdf'; this tool requires
+DOCX"`` even though the bytes were valid OOXML. The suffix-driven
+gate is the wrong layer — actual content sniffing happens downstream
+in the docx/pptx/xlsx parsers and in `kaos_nlp_core.content_type`.
+
+Surfaced by the corpus-stress suite (S10) on 2026-05-24:
+extension-spoofed DOCX content inside a `.pdf` filename now parses
+successfully when the agent routes to `kaos-office-parse-docx`.
+
+`_MIMES_BY_FORMAT` mapping retained for callers that want to
+content-sniff bytes post-resolve and emit a friendlier
+"try kaos-pdf-extract-parse instead" error when bytes don't match.
+
 ## [0.1.1] — 2026-05-23
 
 audit-04 remediation bundle: F-001 PPTX base dep, F-002 writer re-export, Family D classifier.
