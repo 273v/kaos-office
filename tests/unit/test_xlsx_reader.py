@@ -82,6 +82,48 @@ class TestParseXlsx:
         with pytest.raises(FileNotFoundError):
             parse_xlsx("/nonexistent/file.xlsx")
 
+    def test_openpyxl_workbook_round_trips(self, tmp_path: Path) -> None:
+        """Regression for the OPC absolute-target path resolution bug.
+
+        openpyxl emits workbook relationship targets as absolute
+        (``Target="/xl/worksheets/sheet1.xml"``). Before the OPC path
+        resolver landed, ``parse_xlsx`` did a naive ``f"xl/{target}"``
+        and produced ``xl//xl/worksheets/sheet1.xml`` which ``has_part``
+        rejected — every sheet was silently dropped, returning
+        ``tables=[]``.
+
+        This test builds the same shape openpyxl emits, parses it
+        through the native reader, and asserts the table survives
+        with all rows. A regression here means corpus-stress S19 /
+        S16 are once again broken on real-world XLSX uploads.
+
+        openpyxl is an optional dep (in the ``[xlsx]`` extra). When it
+        is not installed the test skips cleanly — the resolver is
+        already covered by the unit tests in ``test_opc_path.py``;
+        this one locks the end-to-end round-trip through the native
+        reader.
+        """
+        openpyxl = pytest.importorskip("openpyxl")
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "LineItems"
+        ws.append(["row_id", "description", "amount_usd"])
+        ws.append(["LI-PILE-9000", "Vendor onboarding", "2500.00"])
+        ws.append(["LI-PILE-9001", "Pile-test critical line", "77777.77"])
+        path = tmp_path / "openpyxl_made.xlsx"
+        wb.save(path)
+
+        doc = parse_xlsx(path)
+        assert len(doc.tables) == 1
+        table = doc.tables[0]
+        assert table.name == "LineItems"
+        # Header row is consumed; remaining rows = 2.
+        assert table.row_count == 2
+        # Verify the specific cell that S16/S19 needles depend on.
+        cell_values = [row[0] for row in table.rows]
+        assert "LI-PILE-9001" in cell_values
+
     def test_calamine_raises_for_unloadable_sheet(self, tmp_path: Path) -> None:
         import importlib
         import sys
