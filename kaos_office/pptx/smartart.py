@@ -46,20 +46,20 @@ def extract_smartart_texts(
     if not dm_target:
         return []
 
-    # Build full part path relative to package root
-    if dm_target.startswith("/"):
-        dm_part = dm_target.lstrip("/")
-    elif dm_target.startswith(".."):
-        # Relative path from slide directory
-        parts = slide_part_dir.rstrip("/").split("/")
-        for seg in dm_target.split("/"):
-            if seg == "..":
-                parts.pop()
-            else:
-                parts.append(seg)
-        dm_part = "/".join(parts)
-    else:
-        dm_part = f"{slide_part_dir}/{dm_target}"
+    # Resolve absolute / parent-relative / source-relative targets.
+    # Use the shared helper so the SmartArt and XLSX paths stay in
+    # lock-step on relationship resolution semantics.
+    from kaos_office.opc.path import InvalidRelationshipTarget, resolve_part_target
+
+    # The helper expects a source PART name; smartart receives the
+    # slide's DIRECTORY ("ppt/slides"). Synthesize a placeholder slide
+    # part name in that directory so the helper's source-dir logic
+    # produces the original behaviour exactly.
+    source_part = f"{slide_part_dir.rstrip('/')}/slide.xml"
+    try:
+        dm_part = resolve_part_target(source_part, dm_target)
+    except InvalidRelationshipTarget:
+        return []
 
     if not pkg.has_part(dm_part):
         return []

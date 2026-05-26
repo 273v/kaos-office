@@ -108,11 +108,22 @@ def list_sheets(path: str | Path) -> list[dict[str, Any]]:
 
             rows = 0
             cols = 0
-            # Try to read dimensions from the sheet
+            # Try to read dimensions from the sheet. Use the shared
+            # OPC resolver so absolute / parent-relative / source-
+            # relative targets all work — openpyxl-produced workbooks
+            # use absolute targets that broke a naive ``f"xl/..."``.
             rel = wb_rels.get(rid)
             if rel is not None:
-                sheet_path = f"xl/{rel.target}"
-                if pkg.has_part(sheet_path):
+                from kaos_office.opc.path import (
+                    InvalidRelationshipTarget,
+                    resolve_part_target,
+                )
+
+                try:
+                    sheet_path = resolve_part_target("xl/workbook.xml", rel.target)
+                except InvalidRelationshipTarget:
+                    sheet_path = ""
+                if sheet_path and pkg.has_part(sheet_path):
                     sheet_xml = pkg.read_xml(sheet_path)
                     dim = sheet_xml.find(SML_DIMENSION)
                     if dim is not None:

@@ -42,6 +42,7 @@ from kaos_office.ooxml.namespace import (
     qn,
 )
 from kaos_office.opc.package import OPCPackage
+from kaos_office.opc.path import InvalidRelationshipTarget, resolve_part_target
 from kaos_office.xlsx.cell_ref import parse_cell_ref
 from kaos_office.xlsx.shared_strings import SharedStringTable
 from kaos_office.xlsx.styles import StyleTable, serial_to_date
@@ -103,8 +104,16 @@ def parse_xlsx_native(
             rel = wb_rels.get(rid)
             if rel is None:
                 continue
-            # Resolve relative path from workbook location
-            sheet_path = f"xl/{rel.target}"
+            # Resolve the relationship target against the workbook
+            # part's directory. Handles all three OPC forms (absolute,
+            # parent-relative, source-relative). A naive
+            # ``f"xl/{rel.target}"`` broke on openpyxl-produced
+            # workbooks where the target is absolute
+            # (``/xl/worksheets/sheet1.xml``).
+            try:
+                sheet_path = resolve_part_target("xl/workbook.xml", rel.target)
+            except InvalidRelationshipTarget:
+                continue
             if not pkg.has_part(sheet_path):
                 continue
 

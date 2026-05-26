@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-05-26
+
+Corpus-stress S19 / S16 fix: XLSX reader now handles all three OPC
+relationship-target forms (absolute, parent-relative, source-relative)
+via a shared resolver. Before this change, openpyxl-produced workbooks
+(which use absolute relationship targets) were silently dropped — every
+sheet vanished and `parse_xlsx` returned `tables=[]` on a valid file.
+
+Closes corpus-stress Failure 1 in
+`kaos-modules/docs/plans/2026-05-26-corpus-stress-5-failure-resolution.md`.
+
+### Added
+
+* `kaos_office.opc.path.resolve_part_target(source_part, target)` —
+  ECMA-376 §9.3.2 OPC part-name resolver. Handles absolute
+  (`/xl/...`), parent-relative (`../media/...`), and source-relative
+  (`worksheets/sheet1.xml`) targets uniformly. Raises
+  `InvalidRelationshipTarget` for malformed inputs and parent-walks
+  above the package root. Public so other OOXML readers (in this
+  package and downstream) can use the same logic.
+
+### Fixed
+
+* `kaos_office.xlsx.native.parse_xlsx_native` — previously did
+  `f"xl/{rel.target}"` which produced
+  `xl//xl/worksheets/sheet1.xml` when `target` was absolute (the form
+  openpyxl emits). The naive concat failed `pkg.has_part` and the
+  sheet was silently skipped. Now routes through
+  `resolve_part_target` so absolute / relative / parent-relative all
+  resolve correctly.
+* `kaos_office.xlsx.reader.list_sheets` — same bug, same fix.
+* `kaos_office.pptx.smartart` — re-uses `resolve_part_target` instead
+  of an inline copy of the same resolver logic. Behaviour-preserving.
+
+### Tests
+
+* `tests/unit/test_opc_path.py` (15 tests) — pin the resolver
+  contract on all three target forms, source-dir edge cases (package
+  root, empty source), parent-walks-above-root error path, and the
+  openpyxl-style absolute regression.
+* `tests/unit/test_xlsx_reader.py::test_openpyxl_workbook_round_trips`
+  — end-to-end regression: build a workbook with openpyxl, parse via
+  the native reader, assert table + cell values survive. Skips
+  cleanly when openpyxl is not installed (it lives in the optional
+  `[xlsx]` extra).
+
 ## [0.1.2] — 2026-05-25
 
 CS-B1 fix: drop suffix-driven MIME allowlist in office path resolver
