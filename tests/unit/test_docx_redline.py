@@ -119,7 +119,30 @@ class TestRedlineCli:
             main(["redline", str(original), str(revised), str(out)])
 
 
-_TORO = Path(__file__).resolve().parents[1] / "fixtures" / "docx" / "Toro 2022 Term Loan.docx"
+_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "docx"
+_TORO = _FIXTURES / "Toro 2022 Term Loan.docx"
+
+
+class TestRealAuthoredPair:
+    """Redline of a real authored before/after pair (Footnote.docx →
+    Footnote-Edit.docx). Unlike the Toro contract, this small pair has no
+    auto-numbering to re-render, so the exact round-trip invariant holds:
+    accept_all reproduces the edited file, reject_all the original.
+    """
+
+    def test_footnote_edit_pair_exact_roundtrip(self, tmp_path: Path) -> None:
+        original = _FIXTURES / "Footnote.docx"
+        edited = _FIXTURES / "Footnote-Edit.docx"
+        if not (original.exists() and edited.exists()):
+            import pytest
+
+            pytest.skip("Footnote fixture pair missing")
+
+        out = write_redline(original, edited, tmp_path / "footnote_redline.docx")
+        reparsed = parse_docx(out, track_changes=True)
+        assert Revisions.from_document(reparsed)
+        assert _norm_body(accept_all(reparsed)) == _norm_body(parse_docx(edited))
+        assert _norm_body(reject_all(reparsed)) == _norm_body(parse_docx(original))
 
 
 class TestRealFixtureRedline:
