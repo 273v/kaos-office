@@ -123,4 +123,4 @@ class TestToolRegistration:
 
         runtime = MagicMock()
         count = register_office_tools(runtime)
-        assert count == 17  # 5 DOCX + 5 PPTX + 4 XLSX + 3 writers
+        assert count == 18  # 5 DOCX + 5 PPTX + 4 XLSX + 4 writers (incl. redliner)

@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-05-29
+
+DOCX redline generation (`compare_docx`, `write_redline`, CLI, MCP) plus
+reader fixes for tracked changes after lists and inside headings. Raises
+the `kaos-content` floor to `>=0.1.3` for `compare_documents`.
+
+### Changed
+
+- **`kaos-content` dependency floor raised to `>=0.1.3,<0.2`** — the
+  redline surface is built on `kaos_content.compare_documents`, added in
+  kaos-content 0.1.3.
+
+### Added
+
+- **DOCX redline generation: `compare_docx` and `write_redline`.** Compare
+  two Word documents and produce a `ContentDocument` whose differences are
+  expressed as native tracked changes — word-level insertions/deletions
+  inside changed paragraphs, block-level insertions/deletions, and
+  (by default) move detection. `write_redline(original, revised, output)`
+  writes the result straight to a `.docx` Word opens with tracked changes.
+  Both are re-exported at the package top level and from
+  `kaos_office.docx`. Built on the new `kaos_content.compare_documents`
+  engine (pure Python, no new dependencies).
+- **CLI: `kaos-office redline ORIGINAL REVISED OUTPUT`.** Writes a
+  tracked-changes redline DOCX. Flags: `--author`, `--no-moves`,
+  `--force`, and `--json` (envelope reports revision counts by type).
+- **MCP tool `CompareDocxTool` (`kaos-office-redline-docx`).** Compares
+  two DOCX inputs (filesystem paths, `kaos://artifacts/<id>` URIs, or
+  session-VFS paths) and writes a redline DOCX, registering it as an
+  artifact. Joins the `authoring` tool group, bringing
+  `register_office_tools` to **18 tools** (4 writers).
+
+### Fixed
+
+- **DOCX reader: headings now preserve inline structure.** Headings were
+  built from a flattened plain-text string, which discarded all inline
+  content — silently dropping tracked changes inside an edited heading (a
+  redlined heading showed no change and accept/reject could not reproduce
+  either side) and losing run formatting (bold, links) in headings. The
+  reader now builds headings from their collected inlines, so heading
+  redlines round-trip and heading formatting survives. Plain headings are
+  unchanged (still a single text run).
+- **DOCX reader: a body-level tracked-change block (`w:ins` / `w:del` /
+  `w:moveFrom` / `w:moveTo`) immediately following a list now closes the
+  list before opening its revision wrapper.** Previously the revision
+  `Div` was spliced into the still-open `OrderedList` / `BulletList` as a
+  stray child and failed `ListItem` validation on build — surfaced by
+  redline output that places block revisions next to lists. The reader
+  now flushes open lists at the revision boundary, mirroring the table
+  and section-break handling.
+
 ## [0.1.3] — 2026-05-26
 
 Corpus-stress S19 / S16 fix: XLSX reader now handles all three OPC

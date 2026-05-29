@@ -153,6 +153,31 @@ def main(argv: list[str] | None = None) -> None:
             "--json", dest="json_output", action="store_true", help="JSON envelope"
         )
 
+    # --- redline: compare two DOCX files into a tracked-changes DOCX ---
+    p_redline = subparsers.add_parser(
+        "redline",
+        help="Compare two DOCX files and write a tracked-changes redline DOCX",
+    )
+    p_redline.add_argument("original", help="Path to the baseline .docx")
+    p_redline.add_argument("revised", help="Path to the edited .docx")
+    p_redline.add_argument("output", help="Output redline .docx path")
+    p_redline.add_argument(
+        "--author",
+        default="Reviewer",
+        help="Author name recorded on every generated revision (default: Reviewer)",
+    )
+    p_redline.add_argument(
+        "--no-moves",
+        action="store_true",
+        help="Disable move detection (emit relocated content as delete + insert)",
+    )
+    p_redline.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite the output path if it already exists",
+    )
+    p_redline.add_argument("--json", dest="json_output", action="store_true", help="JSON envelope")
+
     args = parser.parse_args(argv)
 
     handlers = {
@@ -168,6 +193,7 @@ def main(argv: list[str] | None = None) -> None:
         "write-docx": _cmd_write_docx,
         "write-pptx": _cmd_write_pptx,
         "write-xlsx": _cmd_write_xlsx,
+        "redline": _cmd_redline,
     }
     try:
         handlers[args.command](args)
@@ -578,3 +604,42 @@ def _cmd_write_xlsx(args: argparse.Namespace) -> None:
     out = _check_write_target(args.output, args.force)
     write_xlsx(doc, out)
     _emit_write_envelope(args, out, "xlsx", table_count=len(doc.tables))
+
+
+def _cmd_redline(args: argparse.Namespace) -> None:
+    """Compare two DOCX files and write a tracked-changes redline DOCX."""
+    from collections import Counter
+
+    from kaos_content.revision import Revisions
+
+    from kaos_office.docx.redline import compare_docx
+    from kaos_office.docx.writer import write_docx
+
+    original = _validate_file(args.original)
+    revised = _validate_file(args.revised)
+    out = _check_write_target(args.output, args.force)
+
+    redline = compare_docx(original, revised, author=args.author, detect_moves=not args.no_moves)
+    write_docx(redline, out)
+
+    revs = Revisions.from_document(redline)
+    by_type = dict(Counter(r.change_type.value for r in revs))
+    if not args.json_output:
+        print(
+            f"Wrote {out.stat().st_size} bytes to {out} (docx). "
+            f"{len(revs)} revision(s): {by_type or '{}'}.",
+            file=sys.stderr,
+        )
+        return
+    _json_out(
+        {
+            "command": args.command,
+            "original": str(original),
+            "revised": str(revised),
+            "output": str(out),
+            "format": "docx",
+            "size_bytes": out.stat().st_size,
+            "revision_count": len(revs),
+            "revisions_by_type": by_type,
+        }
+    )

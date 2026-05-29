@@ -20,7 +20,7 @@ from kaos_content import ContentDocument
 from kaos_content.builders import DocumentBuilder
 from kaos_content.model.annotation import AnnotationType
 from kaos_content.model.attr import Attr
-from kaos_content.model.blocks import Table
+from kaos_content.model.blocks import Heading, Table
 from kaos_content.model.inlines import (
     Emphasis,
     Image,
@@ -518,6 +518,14 @@ def _handle_body_revision(el: etree._Element, ctx: ParseContext, tag: str) -> No
                 _process_body_child(child, ctx)
         return
 
+    # A body-level revision wrapper closes any open list, exactly like a
+    # table or sectPr does (see ``_process_body_child``). Without this, a
+    # ``<w:ins>`` / ``<w:del>`` block that follows list paragraphs would be
+    # spliced into the still-open ``OrderedList`` / ``BulletList`` as a
+    # stray ``Div`` child, which fails ListItem validation on build. This
+    # is routinely produced by the redline engine, which emits block-level
+    # revision Divs adjacent to lists.
+    _flush_open_lists(ctx)
     metadata = _revision_metadata(el)
     ctx.builder.begin_div(classes=(rev_class,), kv=metadata)
     for child in el:
@@ -633,7 +641,14 @@ def _handle_paragraph(el: etree._Element, ctx: ParseContext) -> None:
             if num_id is not None:
                 rendered = ctx.numbering_state.get_formatted_label(num_id, ilvl)
                 label = rendered or None
-            ctx.builder.heading(heading_level, text.strip(), numbering_label=label)
+            # Append the heading from its collected inlines (not a flattened
+            # string) so inline structure — tracked-change ``rev-*`` spans and
+            # run formatting (bold, links) — survives. ``builder.heading`` only
+            # accepts plain text and would discard all of it, which silently
+            # dropped edits inside redlined headings.
+            ctx.builder.add_block(
+                Heading(depth=heading_level, children=tuple(inlines), numbering_label=label)
+            )
             ctx.builder.with_provenance(extractor=_EXTRACTOR)
         return
 

@@ -204,29 +204,30 @@ class TestWritePptxTool:
 
 class TestRegisterIncludesWriters:
     def test_all_writers_registered(self) -> None:
-        """register_office_tools returns 17 and includes the three writers."""
+        """register_office_tools returns 18 and includes the four writers."""
         from unittest.mock import MagicMock
 
         from kaos_office.tools import register_office_tools
 
         runtime = MagicMock()
         count = register_office_tools(runtime)
-        # 14 readers + 3 writers = 17
-        assert count == 17
+        # 14 readers + 4 writers (incl. redliner) = 18
+        assert count == 18
 
         registered = [c.args[0] for c in runtime.tools.register_tool.call_args_list]
         names = {t.metadata.name for t in registered}
         assert "kaos-office-write-docx" in names
         assert "kaos-office-write-pptx" in names
         assert "kaos-office-write-xlsx" in names
+        assert "kaos-office-redline-docx" in names
 
     def test_register_office_authoring_subset(self) -> None:
-        """`register_office_authoring_tools` registers only the 3 writers.
+        """`register_office_authoring_tools` registers the 4 writers.
 
         Pins the SessionToolSet ``authoring`` group entry point: a
         caller that wants drafting workflows opts into this without
-        also exposing every parser. The 3 writers carry
-        ``readOnlyHint=False`` annotations.
+        also exposing every parser. The 4 writers (three serializers
+        plus the DOCX redliner) carry ``readOnlyHint=False`` annotations.
         """
         from unittest.mock import MagicMock
 
@@ -234,13 +235,14 @@ class TestRegisterIncludesWriters:
 
         runtime = MagicMock()
         count = register_office_authoring_tools(runtime)
-        assert count == 3
+        assert count == 4
         registered = [c.args[0] for c in runtime.tools.register_tool.call_args_list]
         names = {t.metadata.name for t in registered}
         assert names == {
             "kaos-office-write-docx",
             "kaos-office-write-pptx",
             "kaos-office-write-xlsx",
+            "kaos-office-redline-docx",
         }
         for tool in registered:
             assert tool.metadata.annotations is not None
