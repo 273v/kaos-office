@@ -20,7 +20,7 @@ from pathlib import Path
 from kaos_content.search import SearchResult, SearchResults, search_document
 
 from kaos_office._version import __version__
-from kaos_office.docx import parse_docx, write_docx
+from kaos_office.docx import compare_docx, parse_docx, write_docx, write_redline
 from kaos_office.errors import (
     DocxExtractionError,
     KaosOfficeError,
@@ -120,6 +120,7 @@ __all__ = [
     "XlsxExtractionError",
     "XlsxMetadataTool",
     "__version__",
+    "compare_docx",
     "extract_to_markdown",
     "list_sheets",
     "parse_docx",
@@ -131,5 +132,6 @@ __all__ = [
     "search_document",
     "write_docx",
     "write_pptx",
+    "write_redline",
     "write_xlsx",
 ]

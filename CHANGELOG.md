@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **DOCX redline generation: `compare_docx` and `write_redline`.** Compare
+  two Word documents and produce a `ContentDocument` whose differences are
+  expressed as native tracked changes — word-level insertions/deletions
+  inside changed paragraphs, block-level insertions/deletions, and
+  (by default) move detection. `write_redline(original, revised, output)`
+  writes the result straight to a `.docx` Word opens with tracked changes.
+  Both are re-exported at the package top level and from
+  `kaos_office.docx`. Built on the new `kaos_content.compare_documents`
+  engine (pure Python, no new dependencies).
+- **CLI: `kaos-office redline ORIGINAL REVISED OUTPUT`.** Writes a
+  tracked-changes redline DOCX. Flags: `--author`, `--no-moves`,
+  `--force`, and `--json` (envelope reports revision counts by type).
+
 ## [0.1.3] — 2026-05-26
 
 Corpus-stress S19 / S16 fix: XLSX reader now handles all three OPC
