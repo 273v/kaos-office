@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DOCX reader: headings now preserve inline structure.** Headings were
+  built from a flattened plain-text string, which discarded all inline
+  content — silently dropping tracked changes inside an edited heading (a
+  redlined heading showed no change and accept/reject could not reproduce
+  either side) and losing run formatting (bold, links) in headings. The
+  reader now builds headings from their collected inlines, so heading
+  redlines round-trip and heading formatting survives. Plain headings are
+  unchanged (still a single text run).
 - **DOCX reader: a body-level tracked-change block (`w:ins` / `w:del` /
   `w:moveFrom` / `w:moveTo`) immediately following a list now closes the
   list before opening its revision wrapper.** Previously the revision
