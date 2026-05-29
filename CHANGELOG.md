@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-05-29
+
+DOCX redline generation (`compare_docx`, `write_redline`, CLI, MCP) plus
+reader fixes for tracked changes after lists and inside headings. Raises
+the `kaos-content` floor to `>=0.1.3` for `compare_documents`.
+
+### Changed
+
+- **`kaos-content` dependency floor raised to `>=0.1.3,<0.2`** — the
+  redline surface is built on `kaos_content.compare_documents`, added in
+  kaos-content 0.1.3.
+
 ### Added
 
 - **DOCX redline generation: `compare_docx` and `write_redline`.** Compare
