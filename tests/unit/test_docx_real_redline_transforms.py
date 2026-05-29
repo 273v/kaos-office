@@ -65,6 +65,13 @@ def _norm(doc: ContentDocument) -> str:
     return " ".join(" ".join(extract_text(b).split()) for b in doc.body)
 
 
+@pytest.mark.skipif(not _CLEAN.exists(), reason="Toro fixture missing")
+def test_compare_real_document_against_itself_is_idempotent() -> None:
+    """Comparing a real contract to itself yields zero revisions."""
+    redline = compare_docx(_CLEAN, _CLEAN)
+    assert len(Revisions.from_document(redline)) == 0
+
+
 @pytest.mark.skipif(not (_CLEAN.exists() and _REDLINE.exists()), reason="Toro fixtures missing")
 def test_compare_clean_against_already_redlined_input() -> None:
     """Real workflow: redline a clean doc against a marked-up version.
