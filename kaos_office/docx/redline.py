@@ -11,6 +11,14 @@ are flattened (insertions accepted, deletions dropped) before the
 comparison. The generated redline therefore reflects the difference
 between the two documents' *content*, not a merge of pre-existing
 revisions.
+
+Known limitation — auto-numbering: when changed or moved content sits
+inside a block-level revision wrapper, Word's auto-numbering context can
+re-render list labels (e.g. an item shows ``"1. (c) ..."`` instead of
+``"(c) ..."``) on a subsequent round trip. The legal *text* is preserved
+and the document opens cleanly; only the rendered numbering label may
+drift. This is a kaos-office numbering round-trip interaction, not a
+difference the comparison invented.
 """
 
 from __future__ import annotations

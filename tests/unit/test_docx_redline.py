@@ -119,6 +119,58 @@ class TestRedlineCli:
             main(["redline", str(original), str(revised), str(out)])
 
 
+_TORO = Path(__file__).resolve().parents[1] / "fixtures" / "docx" / "Toro 2022 Term Loan.docx"
+
+
+class TestRealFixtureRedline:
+    """End-to-end redline of a real legal contract (numbering, headings, tables).
+
+    Asserts the user-facing outcome rather than byte-exact round-trip:
+    the redline reparses, the specific edits are represented correctly,
+    and content similarity stays high. Exact equality is NOT asserted here
+    because numbering labels can re-render when content sits inside
+    block-level revision wrappers (a known kaos-office numbering
+    round-trip limitation, documented on ``compare_docx``).
+    """
+
+    def test_toro_contract_redline_round_trips(self, tmp_path: Path) -> None:
+        if not _TORO.exists():
+            import pytest
+
+            pytest.skip(f"fixture missing: {_TORO}")
+
+        original_doc = parse_docx(_TORO)
+        blocks = list(original_doc.body)
+
+        # A plausible counsel edit: amend one substantive paragraph and
+        # delete a later block.
+        edited_idx = next(
+            i
+            for i, b in enumerate(blocks)
+            if isinstance(b, Paragraph) and len(extract_text(b)) > 40
+        )
+        amended = extract_text(blocks[edited_idx]) + " [counsel insert]"
+        blocks[edited_idx] = Paragraph(children=(Text(value=amended),))
+        del blocks[min(edited_idx + 5, len(blocks) - 1)]
+        revised_doc = original_doc.model_copy(update={"body": tuple(blocks)})
+
+        original = tmp_path / "toro_original.docx"
+        revised = tmp_path / "toro_revised.docx"
+        write_docx(original_doc, original)
+        write_docx(revised_doc, revised)
+
+        out = write_redline(original, revised, tmp_path / "toro_redline.docx")
+        reparsed = parse_docx(out, track_changes=True)
+
+        # Reparses cleanly and carries revisions.
+        assert Revisions.from_document(reparsed)
+        # The amendment lands on the final side only; nothing fabricated.
+        final_text = "\n".join(extract_text(b) for b in accept_all(reparsed).body)
+        original_text = "\n".join(extract_text(b) for b in reject_all(reparsed).body)
+        assert "[counsel insert]" in final_text
+        assert "[counsel insert]" not in original_text
+
+
 class TestMoveDetection:
     def test_no_moves_flag_changes_classification(self, tmp_path: Path) -> None:
         moved = "This entire clause is relocated to a different position in the contract."

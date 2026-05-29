@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   artifact. Joins the `authoring` tool group, bringing
   `register_office_tools` to **18 tools** (4 writers).
 
+### Fixed
+
+- **DOCX reader: a body-level tracked-change block (`w:ins` / `w:del` /
+  `w:moveFrom` / `w:moveTo`) immediately following a list now closes the
+  list before opening its revision wrapper.** Previously the revision
+  `Div` was spliced into the still-open `OrderedList` / `BulletList` as a
+  stray child and failed `ListItem` validation on build — surfaced by
+  redline output that places block revisions next to lists. The reader
+  now flushes open lists at the revision boundary, mirroring the table
+  and section-break handling.
+
 ## [0.1.3] — 2026-05-26
 
 Corpus-stress S19 / S16 fix: XLSX reader now handles all three OPC
