@@ -59,6 +59,39 @@ class TestCompareDocxTool:
         assert result.isError is True
 
     @pytest.mark.asyncio
+    async def test_non_docx_input_returns_error_not_exception(
+        self, doc_pair: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        original, _revised = doc_pair
+        bad = tmp_path / "bad.txt"
+        bad.write_text("not a docx", encoding="utf-8")
+        tool = CompareDocxTool()
+        result = await tool.execute(
+            {
+                "original_path": original.as_uri(),
+                "revised_path": bad.as_uri(),
+                "output_path": str(tmp_path / "out.docx"),
+            }
+        )
+        assert result.isError is True
+        assert not (tmp_path / "out.docx").exists()
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_input_returns_error(
+        self, doc_pair: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        _original, revised = doc_pair
+        tool = CompareDocxTool()
+        result = await tool.execute(
+            {
+                "original_path": (tmp_path / "nope.docx").as_uri(),
+                "revised_path": revised.as_uri(),
+                "output_path": str(tmp_path / "out.docx"),
+            }
+        )
+        assert result.isError is True
+
+    @pytest.mark.asyncio
     async def test_refuses_overwrite_without_force(
         self, doc_pair: tuple[Path, Path], tmp_path: Path
     ) -> None:
