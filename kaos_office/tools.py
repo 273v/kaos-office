@@ -1295,6 +1295,117 @@ class WriteDocxTool(KaosTool):
         return _write_success_result(out, "docx", extra)
 
 
+class CompareDocxTool(KaosTool):
+    """Compare two DOCX files and write a tracked-changes redline DOCX."""
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="kaos-office-redline-docx",
+            display_name="Redline DOCX",
+            description=(
+                "Compare two DOCX files and write a redline DOCX with native Word "
+                "tracked changes (word-level edits, block insert/delete, and move "
+                "detection). Accepting all changes reproduces the revised document; "
+                "rejecting all reproduces the original."
+            ),
+            category=ToolCategory.DOCUMENT,
+            capability=ToolCapability.TRANSFORM,
+            module_name=_MODULE,
+            version=_VERSION,
+            annotations=_OFFICE_WRITE_ANNOTATIONS,
+            input_schema=[
+                ParameterSchema(
+                    name="original_path",
+                    type="string",
+                    description=(
+                        "Baseline DOCX. Absolute path, kaos://artifacts/<id> URI, "
+                        "or session-VFS path."
+                    ),
+                ),
+                ParameterSchema(
+                    name="revised_path",
+                    type="string",
+                    description="Edited DOCX, in the same path forms as original_path.",
+                ),
+                ParameterSchema(
+                    name="output_path",
+                    type="string",
+                    description="Filesystem path where the redline DOCX will be written.",
+                ),
+                ParameterSchema(
+                    name="author",
+                    type="string",
+                    description="Author name recorded on every generated revision.",
+                    required=False,
+                    default="Reviewer",
+                ),
+                ParameterSchema(
+                    name="detect_moves",
+                    type="boolean",
+                    description=(
+                        "Detect relocated content as move revisions instead of delete + insert."
+                    ),
+                    required=False,
+                    default=True,
+                ),
+                ParameterSchema(
+                    name="force",
+                    type="boolean",
+                    description="Overwrite output_path if it already exists.",
+                    required=False,
+                    default=False,
+                ),
+            ],
+        )
+
+    async def execute(
+        self, inputs: dict[str, Any], context: KaosContext | None = None
+    ) -> ToolResult:
+        original_path = inputs.get("original_path", "")
+        revised_path = inputs.get("revised_path", "")
+        if not original_path or not revised_path:
+            return ToolResult.create_error("Both original_path and revised_path are required.")
+        out, err = _check_output_path(inputs.get("output_path", ""), bool(inputs.get("force")))
+        if err is not None or out is None:
+            return ToolResult.create_error(err or "Missing output_path.")
+
+        author = inputs.get("author") or "Reviewer"
+        detect_moves = bool(inputs.get("detect_moves", True))
+
+        try:
+            async with (
+                resolve_office_input(original_path, context, format="docx") as ro,
+                resolve_office_input(revised_path, context, format="docx") as rr,
+            ):
+                from collections import Counter
+
+                from kaos_content.revision import Revisions
+
+                from kaos_office.docx.redline import compare_docx
+                from kaos_office.docx.writer import write_docx
+
+                redline = compare_docx(ro.path, rr.path, author=author, detect_moves=detect_moves)
+                write_docx(redline, out)
+
+                revs = Revisions.from_document(redline)
+                extra: dict[str, Any] = {
+                    "revision_count": len(revs),
+                    "revisions_by_type": dict(Counter(r.change_type.value for r in revs)),
+                }
+                artifact_meta = await _register_output_as_artifact(out, "docx", context)
+                if artifact_meta is not None:
+                    extra.update(artifact_meta)
+                return _write_success_result(out, "docx", extra)
+        except InputPathResolutionError as exc:
+            return ToolResult.create_error(exc.to_agent_message())
+        except Exception as exc:
+            return ToolResult.create_error(
+                f"DOCX redline failed: {exc}. "
+                "Verify both inputs are valid .docx files and output_path is writable."
+            )
+
+
 class WritePptxTool(KaosTool):
     """Write a ContentDocument to a PPTX file."""
 
@@ -1484,18 +1595,19 @@ def register_office_documents_tools(runtime: KaosRuntime) -> int:
 
 
 def register_office_authoring_tools(runtime: KaosRuntime) -> int:
-    """Register the 3 Office authoring (writer) MCP tools.
+    """Register the 4 Office authoring (writer) MCP tools.
 
-    DOCX, PPTX, and XLSX writers — they serialize a
-    ``ContentDocument`` / ``TabularDocument`` to a new Office
-    artifact. Pins the SessionToolSet ``authoring`` group entry
-    point: denied by default at the ceiling and opted into
-    per-session for drafting workflows.
+    DOCX, PPTX, and XLSX writers plus the DOCX redliner — they
+    serialize a ``ContentDocument`` / ``TabularDocument`` (or a
+    comparison of two DOCX files) to a new Office artifact. Pins the
+    SessionToolSet ``authoring`` group entry point: denied by default
+    at the ceiling and opted into per-session for drafting workflows.
     """
     tools: list[KaosTool] = [
         WriteDocxTool(),
         WritePptxTool(),
         WriteXlsxTool(),
+        CompareDocxTool(),
     ]
     for tool in tools:
         runtime.tools.register_tool(tool)
@@ -1507,9 +1619,9 @@ def register_office_tools(runtime: KaosRuntime) -> int:
 
     Backward-compatible union of
     :func:`register_office_documents_tools` (14 read-only) and
-    :func:`register_office_authoring_tools` (3 writers). Existing
-    callers continue to see the same 17 tools with the same names
-    and schemas.
+    :func:`register_office_authoring_tools` (4 writers, including the
+    DOCX redliner). Callers see all 18 tools with stable names and
+    schemas; the original 17 are unchanged.
     """
     count = register_office_documents_tools(runtime)
     count += register_office_authoring_tools(runtime)

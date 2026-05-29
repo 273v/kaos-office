@@ -19,7 +19,7 @@ content with headings, paragraphs, lists, tables, footnotes,
 annotations, tracked changes, and per-section page setup); XLSX produces
 `TabularDocument` (typed columns over a 13-type `ColumnType` system, one
 `Table` per sheet, formulas and merged ranges preserved as metadata).
-The package also ships 17 read / write MCP tools and a 12-subcommand
+The package also ships 18 read / write MCP tools and a 13-subcommand
 admin CLI for agentic workflows.
 
 The base install is intentionally small — four runtime dependencies
@@ -115,7 +115,7 @@ most important entries:
 | **`write_xlsx(doc, path, *, bold_headers=True, auto_width=True, freeze_header=True)` / `write_xlsx_bytes(doc)`** | XLSX writer (lxml — no extras needed). Native SpreadsheetML output with proper date formats, money formats, percentage / float / integer formats per `ColumnType`, auto-sized columns, bold header row, and frozen panes. |
 | **`search_document(doc, query, *, top_k=10, level="paragraph")`** | Re-exported from `kaos-content`. AST-grounded ranked search returning `SearchResults` with `total_matches` / `has_more` for pagination. `level="sentence"` requires the `[nlp]` extra. |
 | **`extract_to_markdown(path, **kwargs)`** | Format-agnostic convenience wrapper. Dispatches by extension to `parse_docx` + `serialize_markdown`, `parse_pptx` + `serialize_markdown`, or `parse_xlsx` + `serialize_tabular_markdown`. |
-| **17 MCP tools** | `ParseDocxTool`, `GetDocxTextTool`, `GetDocxMarkdownTool`, `DocxMetadataTool`, `SearchDocxTool` (5 DOCX) · `ParsePptxTool`, `ListSlidesTool`, `GetSlideTool`, `GetSlideNotesTool`, `SearchPptxTool` (5 PPTX) · `ParseXlsxTool`, `ListSheetsXlsxTool`, `GetSheetXlsxTool`, `XlsxMetadataTool` (4 XLSX) · `WriteDocxTool`, `WritePptxTool`, `WriteXlsxTool` (3 writers). All readers are `readOnly` + `idempotent` + non-destructive + non-open-world; writers refuse silent overwrites unless `force=true`. Register with `register_office_tools(runtime)`. |
+| **18 MCP tools** | `ParseDocxTool`, `GetDocxTextTool`, `GetDocxMarkdownTool`, `DocxMetadataTool`, `SearchDocxTool` (5 DOCX) · `ParsePptxTool`, `ListSlidesTool`, `GetSlideTool`, `GetSlideNotesTool`, `SearchPptxTool` (5 PPTX) · `ParseXlsxTool`, `ListSheetsXlsxTool`, `GetSheetXlsxTool`, `XlsxMetadataTool` (4 XLSX) · `WriteDocxTool`, `WritePptxTool`, `WriteXlsxTool`, `CompareDocxTool` (4 writers — the last compares two DOCX files into a tracked-changes redline). All readers are `readOnly` + `idempotent` + non-destructive + non-open-world; writers refuse silent overwrites unless `force=true`. Register with `register_office_tools(runtime)`. |
 | **Errors (`KaosOfficeError`, `DocxExtractionError`, `PptxExtractionError`, `XlsxExtractionError`)** | Dedicated exception hierarchy. MCP tools translate these into `ToolResult.create_error()` with the documented three-part recovery hint (what / how to fix / alternative tool). |
 
 ## CLI
@@ -155,7 +155,7 @@ kaos-office-serve --http --port 8000                # streamable HTTP
 The admin CLI uses 1-based slide / page numbers (consistent with how
 the file opens in any viewer) and translates internally to the
 0-based indices the Python API uses. `kaos-office-serve` exposes the
-17 MCP tools listed in **Concepts** above.
+18 MCP tools listed in **Concepts** above.
 
 ## Compatibility & status
 

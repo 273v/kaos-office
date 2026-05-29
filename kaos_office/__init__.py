@@ -29,6 +29,7 @@ from kaos_office.errors import (
 )
 from kaos_office.pptx import parse_pptx, write_pptx
 from kaos_office.tools import (
+    CompareDocxTool,
     DocxMetadataTool,
     GetDocxMarkdownTool,
     GetDocxTextTool,
@@ -98,6 +99,7 @@ def extract_to_markdown(path: str | Path, **kwargs: object) -> str:
 
 
 __all__ = [
+    "CompareDocxTool",
     "DocxExtractionError",
     "DocxMetadataTool",
     "GetDocxMarkdownTool",

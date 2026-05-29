@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI: `kaos-office redline ORIGINAL REVISED OUTPUT`.** Writes a
   tracked-changes redline DOCX. Flags: `--author`, `--no-moves`,
   `--force`, and `--json` (envelope reports revision counts by type).
+- **MCP tool `CompareDocxTool` (`kaos-office-redline-docx`).** Compares
+  two DOCX inputs (filesystem paths, `kaos://artifacts/<id>` URIs, or
+  session-VFS paths) and writes a redline DOCX, registering it as an
+  artifact. Joins the `authoring` tool group, bringing
+  `register_office_tools` to **18 tools** (4 writers).
 
 ## [0.1.3] — 2026-05-26
 
