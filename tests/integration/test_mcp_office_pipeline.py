@@ -17,6 +17,9 @@ import pytest
 from kaos_core import KaosContext, KaosRuntime, KaosSettings
 from kaos_core.types.enums import StorageBackend
 from kaos_core.vfs import VFSConfig, VirtualFileSystem
+
+pytest.importorskip("kaos_mcp")
+
 from kaos_mcp import create_app
 from mcp import types
 from mcp.shared.memory import create_connected_server_and_client_session
