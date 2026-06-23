@@ -79,7 +79,7 @@ def write_xlsx(
     finally:
         wb.close()
 
-    logger.info(
+    logger.debug(
         "xlsx.writer: wrote %s, tables=%d, path=%s",
         doc.metadata.title or "untitled",
         len(doc.tables),

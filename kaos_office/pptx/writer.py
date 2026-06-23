@@ -128,7 +128,7 @@ def write_pptx(
     data = write_pptx_bytes(doc, template=template, overflow=overflow)
     path.write_bytes(data)
 
-    logger.info(
+    logger.debug(
         "pptx.writer: wrote %s, blocks=%d, size=%d, path=%s",
         doc.metadata.title or "untitled",
         len(doc.body),
