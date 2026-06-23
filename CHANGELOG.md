@@ -5,7 +5,17 @@ All notable changes to `kaos-office` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.5] - 2026-06-23
+
+### Changed
+
+- Demote routine "wrote ..." success logs in the DOCX, PPTX, and XLSX
+  writers from `INFO` to `DEBUG`. Writing a document is an expected,
+  per-call operation, so it should not log at `INFO` by default. The
+  benign "image src not embeddable, emitting alt text" fallback notice is
+  likewise demoted to `DEBUG`. Combined with the `kaos-core` logging fix,
+  `write_docx`/`write_pptx`/`write_xlsx` now produce no console output
+  unless an application configures logging.
 
 ## [0.1.4] — 2026-05-29
 

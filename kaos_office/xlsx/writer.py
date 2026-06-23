@@ -107,7 +107,7 @@ def write_xlsx(
     data = write_xlsx_bytes(doc)
     path.write_bytes(data)
 
-    logger.info(
+    logger.debug(
         "xlsx.writer: wrote %s, tables=%d, size=%d, path=%s",
         doc.metadata.title or "untitled",
         len(doc.tables),

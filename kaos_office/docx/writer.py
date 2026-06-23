@@ -151,7 +151,7 @@ def write_docx(doc: Any, path: str | Path) -> Path:
     data = write_docx_bytes(doc)
     path.write_bytes(data)
 
-    logger.info(
+    logger.debug(
         "docx.writer: wrote %s, blocks=%d, size=%d, path=%s",
         doc.metadata.title or "untitled",
         len(doc.body),
@@ -887,7 +887,7 @@ def _serialize_image(parent: etree._Element, inline: Any, ctx: _WriteContext) ->
     src = getattr(inline, "src", "")
     decoded = _decode_image_src(src)
     if decoded is None or ctx.writer is None or ctx.doc_rels is None:
-        logger.info("docx.writer: image src not embeddable, emitting alt text (src=%r)", src[:80])
+        logger.debug("docx.writer: image src not embeddable, emitting alt text (src=%r)", src[:80])
         alt = getattr(inline, "alt", None) or getattr(inline, "title", None) or ""
         if alt:
             r = etree.SubElement(parent, W_R)
