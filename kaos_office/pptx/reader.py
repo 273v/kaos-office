@@ -15,7 +15,7 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from kaos_content.builders.builder import DocumentBuilder
 from kaos_content.model.blocks import Table
@@ -111,6 +111,13 @@ class ParseContext:
     source_uri: str
     # Track list nesting state per text frame
     list_stack: list[_ListState] = field(default_factory=list)
+    # Strategy for turning an embedded picture's bytes into an ``Image.src``.
+    # Signature ``(data, fmt, index) -> str`` — same contract as the DOCX
+    # reader and ``kaos-pdf.extract_pdf.image_src_builder``. ``None`` selects
+    # the default inline ``data:image/<fmt>;base64,...`` builder.
+    image_src_builder: Any = None  # Callable[[bytes, str, int], str] | None
+    # 1-based counter of embedded pictures emitted, passed to the builder.
+    image_counter: int = 0
 
 
 @dataclass  # Mutable: item_open toggled during list processing
@@ -122,7 +129,29 @@ class _ListState:
     item_open: bool = False
 
 
-def parse_pptx(path: str | Path) -> ContentDocument:
+def _inline_data_uri(data: bytes, fmt: str, index: int) -> str:
+    """Default :func:`parse_pptx` ``image_src_builder``.
+
+    Emits a self-contained ``data:image/<fmt>;base64,<payload>`` URI so an
+    embedded picture's bytes survive in the ContentDocument (reachable by
+    downstream OCR / VLM / writers) instead of a bare ``pptx://name.ext``
+    placeholder. Mirrors the DOCX reader's default builder and kaos-pdf's
+    image data-URI. ``index`` is accepted for signature parity with
+    caller-supplied builders but is unused here — base64 URIs are
+    self-identifying.
+    """
+    del index  # unused — default builder is stateless
+    import base64
+
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:image/{fmt};base64,{encoded}"
+
+
+def parse_pptx(
+    path: str | Path,
+    *,
+    image_src_builder: Any = None,  # Callable[[bytes, str, int], str] | None
+) -> ContentDocument:
     """Parse a PPTX file into a ContentDocument.
 
     Each slide becomes a Div block with slide_number attribute.
@@ -133,6 +162,18 @@ def parse_pptx(path: str | Path) -> ContentDocument:
 
     Args:
         path: Path to the PPTX file.
+        image_src_builder: Strategy turning an embedded picture's
+            ``(bytes, fmt, index)`` into an ``Image.src`` string, where
+            ``fmt`` is the image MIME subtype (``"png"`` / ``"jpeg"`` / …)
+            and ``index`` is the 1-based picture index. Default
+            :func:`_inline_data_uri` emits a ``data:image/<fmt>;base64,...``
+            URI so the picture bytes are self-contained and reachable by
+            downstream consumers (the same contract as
+            :func:`kaos_office.docx.reader.parse_docx`). Callers wanting
+            out-of-band storage supply their own builder (e.g. persist to a
+            VFS / artifact store and return ``kaos://artifacts/{id}/body``).
+            When a picture's bytes can't be read, the reader falls back to a
+            bare ``pptx://name.ext`` reference regardless of this builder.
 
     Returns:
         ContentDocument with linearized slide content.
@@ -155,7 +196,14 @@ def parse_pptx(path: str | Path) -> ContentDocument:
         builder.set_source(uri=source_uri, mime_type=PPTX_MIME_TYPE)
         _apply_metadata(builder, core_xml, app_xml, prs)
 
-        ctx = ParseContext(builder=builder, pkg=pkg, source_uri=source_uri)
+        ctx = ParseContext(
+            builder=builder,
+            pkg=pkg,
+            source_uri=source_uri,
+            image_src_builder=image_src_builder
+            if image_src_builder is not None
+            else _inline_data_uri,
+        )
 
         for slide_num, slide in enumerate(prs.slides, 1):
             _process_slide(slide, slide_num, ctx)
@@ -693,16 +741,31 @@ def _process_picture(shape: BaseShape, ctx: ParseContext) -> None:
                         alt = cnvpr.get("name")
                     break
 
-    # Determine content type / extension
+    # Determine content type / extension and read the picture bytes. The MIME
+    # subtype (``fmt``) drives the data-URI; ``ext`` only names the fallback
+    # placeholder. ``shape.image`` raises for linked/unsupported pictures, so
+    # both reads are best-effort.
     ext = "png"
+    fmt = "png"
+    data: bytes | None = None
     with contextlib.suppress(Exception):
-        content_type = shape.image.content_type  # ty: ignore[unresolved-attribute]
+        image = shape.image  # ty: ignore[unresolved-attribute]
+        content_type = image.content_type
         if content_type:
-            ext = content_type.split("/")[-1]
-            if ext == "jpeg":
-                ext = "jpg"
+            fmt = content_type.split("/")[-1]
+            ext = "jpg" if fmt == "jpeg" else fmt
+        with contextlib.suppress(Exception):
+            data = image.blob
 
+    # Inline the bytes via the configured builder (default: data-URI) so the
+    # picture is reachable downstream. Fall back to a bare reference only when
+    # the bytes or builder are unavailable.
     src = f"pptx://{name}.{ext}"
+    builder = ctx.image_src_builder
+    if data is not None and builder is not None:
+        ctx.image_counter += 1
+        with contextlib.suppress(Exception):
+            src = builder(data, fmt, ctx.image_counter)
 
     # Shape geometry is in EMU on python-pptx; convert to points for the AST.
     width_pt: float | None = None
