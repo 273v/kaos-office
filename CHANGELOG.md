@@ -5,6 +5,20 @@ All notable changes to `kaos-office` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-06-26
+
+### Added
+
+- **PPTX embedded image bytes.** `parse_pptx` now inlines each embedded
+  picture's bytes as a `data:image/<fmt>;base64,...` URI by default, instead
+  of emitting a bare `pptx://name.ext` placeholder. This brings PPTX to parity
+  with the DOCX reader so downstream OCR / VLM / writers can reach the image
+  content. A new `image_src_builder` keyword on `parse_pptx`
+  (`(bytes, fmt, index) -> str`, the same contract as
+  `kaos_office.docx.reader.parse_docx`) lets callers route bytes to out-of-band
+  storage (e.g. a VFS / artifact store) instead. When a picture's bytes can't
+  be read, the reader falls back to the previous `pptx://name.ext` reference.
+
 ## [0.1.5] - 2026-06-23
 
 ### Changed
