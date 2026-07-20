@@ -193,8 +193,13 @@ class TestImages:
         assert "red rectangle" in self.md
 
     def test_image_extension(self):
-        assert ".png" in self.md
+        # An image without alt text falls back to its filename, which carries
+        # the real extension (image2 is a .jpg). Images that DO carry alt text
+        # render the alt text instead (see test_alt_text: image1's "red
+        # rectangle" description), so the .png image's filename intentionally
+        # does not appear. Both images are still extracted.
         assert ".jpg" in self.md
+        assert self.md.count("![") >= 2
 
 
 class TestNotes:
