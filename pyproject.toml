@@ -67,7 +67,7 @@ kaos-office-serve = "kaos_office.serve:main"
 # refuses to resolve any declared extra whose package isn't on PyPI yet;
 # F009 #4. Now resolvable.)
 [project.optional-dependencies]
-mcp = ["kaos-mcp>=0.1.0,<0.2"]
+mcp = ["kaos-mcp>=0.1.5,<0.2"]
 nlp = ["kaos-nlp-core>=0.1.0,<0.2"]
 pptx = [
     "python-pptx>=1.0",
