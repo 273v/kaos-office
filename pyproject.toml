@@ -86,11 +86,13 @@ xlsx-formulas = [
 ]
 
 [dependency-groups]
-# Sibling deps that aren't yet on PyPI (kaos-mcp, kaos-pdf cross-validator
-# tests) are stripped here at 0.1.0a1 — re-add at 0.1.0a2 once they ship.
-# kaos-nlp-core is on PyPI so it stays for the [nlp]-extra integration tests.
+# kaos-nlp-core backs the [nlp]-extra integration tests; kaos-pdf is the
+# cross-validator for the LibreOffice DOCX->PDF round-trip in
+# tests/integration/test_live_verification.py (skipped when LibreOffice is
+# absent, but must import when it is present).
 dev = [
   "kaos-nlp-core>=0.1.0,<0.2",
+  "kaos-pdf>=0.1.0,<0.2",
   "python-pptx>=1.0",
   "python-calamine>=0.6",
   "openpyxl>=3.1",
@@ -98,7 +100,7 @@ dev = [
   "pytest>=8.3.5",
   "pytest-asyncio>=0.26.0",
   "pytest-cov>=6.0.0",
-  "ruff>=0.15.12",
+  "ruff>=0.16.4",
   "ty>=0.0.34,<0.1",
 ]
 
